@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+
+# Sensitive data
+config.yaml
+*.db
+*.sqlite
+
+# Browser data
+browser_data/
+
+# Logs
+logs/
+*.log
+
+# Data
+data/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+get_chat_id.py
+get_chat_id_auto.py

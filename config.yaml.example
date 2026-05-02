@@ -1,0 +1,47 @@
+# Rental Agent Configuration - EXAMPLE
+# Copy this to config.yaml and fill in your values
+
+search_parameters:
+  price_range:
+    min: 2000
+    max: 5000
+  locations:
+    - "Tel Aviv"
+    - "Ramat Gan"
+  min_rooms: 2
+  must_have_keywords:
+    - "מעלית"
+    - "מרפסת"
+  exclude_keywords:
+    - "דירת חלוקה"
+
+sources:
+  yad2:
+    enabled: true
+    base_url: "https://www.yad2.co.il/realestate/rent"
+  facebook:
+    enabled: true
+    groups:
+      - name: "Group1"
+        url: "https://www.facebook.com/groups/YOUR_GROUP_ID_1"
+      - name: "Group2"
+        url: "https://www.facebook.com/groups/YOUR_GROUP_ID_2"
+      - name: "Group3"
+        url: "https://www.facebook.com/groups/YOUR_GROUP_ID_3"
+
+telegram:
+  bot_token: "YOUR_BOT_TOKEN"  # Get from @BotFather
+  chat_id: "YOUR_CHAT_ID"      # Get from @userinfobot
+
+scraping:
+  scroll_count: 10
+  delay_min: 2
+  delay_max: 5
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+browser:
+  persistent_context_path: "./browser_data"
+  headless: false
+
+database:
+  path: "./data/listings.db"
