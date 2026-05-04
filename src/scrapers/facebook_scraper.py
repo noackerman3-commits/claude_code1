@@ -58,8 +58,8 @@ class FacebookScraper(BaseScraper):
 
         try:
             logger.info(f"Facebook → {group_name} ({group_url})")
-            self.page.goto(group_url, wait_until='networkidle', timeout=30000)
-            self.random_delay()
+            self.page.goto(group_url, wait_until='domcontentloaded', timeout=60000)
+            import time; time.sleep(6)
 
             scroll_count = self.config.get('scraping', {}).get('scroll_count', 10)
             self.scroll_page(scroll_count)

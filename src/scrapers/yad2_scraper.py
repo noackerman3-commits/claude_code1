@@ -47,8 +47,9 @@ class Yad2Scraper(BaseScraper):
                 self.initialize_browser()
 
             logger.info(f"Yad2 → {url}")
-            self.page.goto(url, wait_until='networkidle', timeout=30000)
-            self.random_delay()
+            self.page.goto(url, wait_until='domcontentloaded', timeout=60000)
+            # Allow time for JS rendering and for the user to solve any CAPTCHA
+            import time; time.sleep(8)
 
             try:
                 self.page.wait_for_selector('.feed_list', timeout=10000)
