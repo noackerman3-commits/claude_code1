@@ -161,12 +161,18 @@ class Yad2Scraper(BaseScraper):
                 extract_amenities_from_text,
                 extract_size_from_text,
                 extract_floor_from_text,
+                extract_property_type_from_text,
+                extract_neighborhood_from_yad2_text,
+                extract_parking_count_from_text,
             )
-            price    = extract_price_from_text(raw_text)
-            rooms    = extract_rooms_from_text(raw_text)
-            size_sqm = extract_size_from_text(raw_text)
-            floor    = extract_floor_from_text(raw_text)
-            amenities = extract_amenities_from_text(raw_text)
+            price         = extract_price_from_text(raw_text)
+            rooms         = extract_rooms_from_text(raw_text)
+            size_sqm      = extract_size_from_text(raw_text)
+            floor         = extract_floor_from_text(raw_text)
+            amenities     = extract_amenities_from_text(raw_text)
+            property_type = extract_property_type_from_text(raw_text)
+            neighborhood  = extract_neighborhood_from_yad2_text(raw_text)
+            parking_count = extract_parking_count_from_text(raw_text)
 
             # Location — try selector first, fall back to first non-numeric line
             location = self._first_text(
@@ -191,23 +197,57 @@ class Yad2Scraper(BaseScraper):
                 image_url = img.get_attribute('src')
 
             return {
-                'listing_id': listing_id,
-                'source': 'yad2',
-                'url': url,
-                'title': title,
-                'price': price,
-                'rooms': rooms,
-                'floor': floor,
-                'size_sqm': size_sqm,
-                'location': location,
-                'image_url': image_url,
-                'raw_text': raw_text,
+                'listing_id':   listing_id,
+                'source':       'yad2',
+                'url':          url,
+                'title':        title,
+                'price':        price,
+                'rooms':        rooms,
+                'floor':        floor,
+                'size_sqm':     size_sqm,
+                'location':     location,
+                'neighborhood': neighborhood,
+                'property_type': property_type,
+                'parking_count': parking_count,
+                'image_url':    image_url,
+                'raw_text':     raw_text,
                 **amenities,
             }
 
         except Exception as e:
             logger.error(f"Error extracting Yad2 listing: {e}")
             return None
+
+    def enrich_from_detail_page(self, listing: dict) -> None:
+        """
+        Visit the listing detail page and update amenity fields in-place.
+        The card text has no amenity keywords; the detail page does.
+        """
+        url = listing.get('url')
+        if not url or not self.page:
+            return
+        try:
+            import time
+            self.page.goto(url, wait_until='domcontentloaded', timeout=30000)
+            time.sleep(3)
+            body_text = self.page.inner_text('body')
+
+            from utils import extract_amenities_from_text, extract_parking_count_from_text
+            amenities     = extract_amenities_from_text(body_text)
+            parking_count = extract_parking_count_from_text(body_text)
+
+            listing.update(amenities)
+            listing['parking_count'] = parking_count
+            if parking_count > 0:
+                listing['has_parking'] = True
+
+            # Append detail text so keyword filters can match amenity terms
+            card_text = listing.get('raw_text') or ''
+            listing['raw_text'] = card_text + '\n' + body_text[:3000]
+
+            logger.info(f"Enriched {listing.get('listing_id')}: {amenities}, parking={parking_count}")
+        except Exception as e:
+            logger.warning(f"Detail enrichment failed for {url}: {e}")
 
     def _first_text(self, element, selectors: List[str]) -> Optional[str]:
         for sel in selectors:

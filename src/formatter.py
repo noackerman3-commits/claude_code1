@@ -12,28 +12,35 @@ def format_listing(listing: dict) -> str:
     All fields are optional — the formatter degrades gracefully when data
     is missing (e.g. Facebook posts that don't mention the floor).
     """
-    rooms    = listing.get('rooms')
-    price    = listing.get('price')
-    location = listing.get('location') or ''
-    floor    = listing.get('floor')
-    size     = listing.get('size_sqm')
-    url      = listing.get('url') or ''
-    source   = listing.get('source') or ''
-    raw_text = listing.get('raw_text') or listing.get('title') or ''
+    rooms         = listing.get('rooms')
+    price         = listing.get('price')
+    location      = listing.get('location') or ''
+    neighborhood  = listing.get('neighborhood') or ''
+    property_type = listing.get('property_type') or ''
+    floor         = listing.get('floor')
+    size          = listing.get('size_sqm')
+    url           = listing.get('url') or ''
+    source        = listing.get('source') or ''
+    raw_text      = listing.get('raw_text') or listing.get('title') or ''
 
     # --- Header ---
     rooms_str = f"{rooms:.0f}" if rooms and rooms == int(rooms) else str(rooms) if rooms else '?'
     city = _extract_city(location, raw_text)
     header = f"🏠 *{rooms_str} חדרים"
+    if property_type:
+        header = f"🏠 *{property_type}"
     if city:
         header += f" | {city}"
     header += "*"
 
     lines = [header, ""]
 
-    # --- Address line ---
+    # --- Address / neighborhood line ---
     if location:
-        lines.append(f"📍 {location}")
+        addr = location
+        if neighborhood and neighborhood not in location:
+            addr = f"{location} ({neighborhood})"
+        lines.append(f"📍 {addr}")
 
     # --- Price / rooms / floor / size ---
     details = []
@@ -86,22 +93,37 @@ def _build_amenity_line(listing: dict) -> str:
     """
     Builds a compact amenity row.
     Shows ✅/❌ only when the field is known (not None).
-    Shows — when unknown (e.g. not mentioned in the text).
+    Parking shows count when > 1.
     """
-    fields = [
-        ('has_mamad',    '🛡️ ממ"ד'),
-        ('has_parking',  '🅿️ חניה'),
-        ('has_balcony',  '🌿 מרפסת'),
-        ('has_elevator', '🛗 מעלית'),
-        ('has_ac',       '❄️ מיזוג'),
-    ]
     parts = []
-    for key, label in fields:
-        val = listing.get(key)
-        if val is None:
-            continue  # field not in listing dict at all
-        icon = '✅' if val else '❌'
-        parts.append(f"{icon} {label}")
+
+    # Mamad
+    mamad = listing.get('has_mamad')
+    if mamad is not None:
+        parts.append(f"{'✅' if mamad else '❌'} 🛡️ ממ\"ד")
+
+    # Parking — show count when enriched
+    parking_count = listing.get('parking_count')
+    has_parking   = listing.get('has_parking')
+    if parking_count is not None and parking_count > 1:
+        parts.append(f"✅ 🅿️ {parking_count} חניות")
+    elif has_parking is not None:
+        parts.append(f"{'✅' if has_parking else '❌'} 🅿️ חניה")
+
+    # Balcony
+    balcony = listing.get('has_balcony')
+    if balcony is not None:
+        parts.append(f"{'✅' if balcony else '❌'} 🌿 מרפסת")
+
+    # Elevator
+    elevator = listing.get('has_elevator')
+    if elevator is not None:
+        parts.append(f"{'✅' if elevator else '❌'} 🛗 מעלית")
+
+    # AC
+    ac = listing.get('has_ac')
+    if ac is not None:
+        parts.append(f"{'✅' if ac else '❌'} ❄️ מיזוג")
 
     return "  ".join(parts)
 

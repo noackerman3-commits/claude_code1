@@ -99,6 +99,7 @@ class ScrapingManager:
     def _run_yad2(self, searches: list, result: ScrapingResult, progress: Callable):
         from scrapers.yad2_scraper import Yad2Scraper
 
+        enrich = self.config.get('scraping', {}).get('enrich_details', False)
         scraper = Yad2Scraper(self.config)
         try:
             scraper.initialize_browser()
@@ -108,6 +109,8 @@ class ScrapingManager:
                 progress(f"  Yad2 [{i}/{total}] {name}")
                 try:
                     listings = scraper.scrape_one(search_cfg)
+                    if enrich:
+                        self._enrich_new_yad2(scraper, listings, progress)
                     new_n = self._process(listings, result)
                     result.source_stats[name] = {'scraped': len(listings), 'new': new_n}
                     result.total_scraped += len(listings)
@@ -118,6 +121,19 @@ class ScrapingManager:
                     result.errors.append(err)
         finally:
             scraper.close_browser()
+
+    def _enrich_new_yad2(self, scraper, listings: list, progress: Callable):
+        """Visit detail page for each listing that is new and passes the filter."""
+        candidates = [
+            lst for lst in listings
+            if self.filter.matches(lst)[0]
+            and not self.db.listing_exists(lst['listing_id'], lst['source'])
+        ]
+        if not candidates:
+            return
+        progress(f"  🔍 Enriching {len(candidates)} new listing(s)…")
+        for lst in candidates:
+            scraper.enrich_from_detail_page(lst)
 
     def _run_facebook(self, groups: list, result: ScrapingResult, progress: Callable):
         from scrapers.facebook_scraper import FacebookScraper

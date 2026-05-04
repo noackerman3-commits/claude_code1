@@ -44,10 +44,12 @@ class Database:
                     has_mamad    INTEGER DEFAULT 0,
                     has_balcony  INTEGER DEFAULT 0,
                     has_elevator INTEGER DEFAULT 0,
-                    has_ac       INTEGER DEFAULT 0,
-                    description  TEXT,
-                    image_url    TEXT,
-                    raw_text     TEXT,
+                    has_ac         INTEGER DEFAULT 0,
+                    property_type  TEXT,
+                    parking_count  INTEGER DEFAULT 0,
+                    description    TEXT,
+                    image_url      TEXT,
+                    raw_text       TEXT,
                     first_seen   TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     UNIQUE(listing_id, source)
                 )
@@ -69,9 +71,11 @@ class Database:
             ('has_balcony',  'INTEGER DEFAULT 0'),
             ('has_elevator', 'INTEGER DEFAULT 0'),
             ('has_ac',       'INTEGER DEFAULT 0'),
-            ('description',  'TEXT'),
-            ('image_url',    'TEXT'),
-            ('raw_text',     'TEXT'),
+            ('property_type',  'TEXT'),
+            ('parking_count',  'INTEGER DEFAULT 0'),
+            ('description',    'TEXT'),
+            ('image_url',      'TEXT'),
+            ('raw_text',       'TEXT'),
         ]
         for col, coltype in new_columns:
             try:
@@ -106,8 +110,9 @@ class Database:
                     price, rooms, floor, size_sqm,
                     location, neighborhood,
                     has_parking, has_mamad, has_balcony, has_elevator, has_ac,
+                    property_type, parking_count,
                     description, image_url, raw_text
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     data.get('listing_id'),
@@ -125,9 +130,10 @@ class Database:
                     int(bool(data.get('has_balcony'))),
                     int(bool(data.get('has_elevator'))),
                     int(bool(data.get('has_ac'))),
+                    data.get('property_type'),
+                    data.get('parking_count', 0),
                     data.get('description'),
                     data.get('image_url'),
-                    # raw_text supersedes the old full_text key
                     data.get('raw_text') or data.get('full_text'),
                 ),
             )

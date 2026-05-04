@@ -170,11 +170,14 @@ def extract_size_from_text(text: str) -> Optional[float]:
 # ------------------------------------------------------------------
 
 def extract_floor_from_text(text: str) -> Optional[int]:
-    """Extract floor number from free text."""
+    """Extract floor number from free text. קרקע = ground floor (0)."""
     if not text:
         return None
+    # Ground floor keywords
+    if re.search(r'קומה\s*(?:‎)?קרקע', text, re.IGNORECASE):
+        return 0
     patterns = [
-        r'קומה\s*(\d+)',          # קומה 3
+        r'קומה\s*(?:‎)?(\d+)',
         r'(?:floor|fl\.?)\s*(\d+)',
         r'(\d+)(?:st|nd|rd|th)\s*floor',
     ]
@@ -188,6 +191,61 @@ def extract_floor_from_text(text: str) -> Optional[int]:
             except ValueError:
                 continue
     return None
+
+
+def extract_property_type_from_text(text: str) -> Optional[str]:
+    """Extract property type from Yad2 card text (e.g. דירת גן, בית פרטי)."""
+    types = [
+        'דירת גן', 'דירת פנטהאוז', 'פנטהאוז',
+        'בית פרטי', 'קוטג\'', 'דו משפחתי',
+        'דירה', 'סטודיו', 'לופט',
+    ]
+    for t in types:
+        if t in text:
+            return t
+    return None
+
+
+def extract_neighborhood_from_yad2_text(text: str) -> Optional[str]:
+    """
+    Extract neighborhood from Yad2 card text.
+    The third line follows the pattern: TYPE, NEIGHBORHOOD, CITY
+    """
+    if not text:
+        return None
+    for line in text.split('\n'):
+        line = line.strip()
+        parts = [p.strip() for p in line.split(',')]
+        if len(parts) == 3:
+            # Middle part is the neighborhood
+            neighborhood = parts[1].strip()
+            if neighborhood and len(neighborhood) > 2:
+                return neighborhood
+    return None
+
+
+def extract_parking_count_from_text(text: str) -> int:
+    """Extract number of parking spots mentioned in text."""
+    if not text:
+        return 0
+    patterns = [
+        r'(\d+)\s*חניות',
+        r'(\d+)\s*מקומות?\s*חניה',
+        r'(\d+)\s*parking',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            try:
+                n = int(match.group(1))
+                if 1 <= n <= 5:
+                    return n
+            except ValueError:
+                continue
+    # Single parking mentioned
+    if any(kw in text for kw in ['חניה', 'חנייה', 'parking']):
+        return 1
+    return 0
 
 
 # ------------------------------------------------------------------

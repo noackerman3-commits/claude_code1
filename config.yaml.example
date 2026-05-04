@@ -77,6 +77,7 @@ scraping:
   scroll_count: 10       # Facebook: how many times to scroll each group page
   delay_min: 2           # Seconds — minimum random delay between actions
   delay_max: 5           # Seconds — maximum random delay between actions
+  enrich_details: true   # Visit each new Yad2 listing page to extract mamad/parking/AC
   user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
 # ------------------------------------------------------------
