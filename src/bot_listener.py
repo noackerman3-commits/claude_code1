@@ -334,48 +334,39 @@ class ListingBot:
             await update.message.reply_text(f"❌ Error: {e}")
 
     # ------------------------------------------------------------------
-    # Results formatter (placeholder — will be replaced with professional
-    # real-estate format in the next phase)
+    # Results — professional real-estate format
     # ------------------------------------------------------------------
 
     async def _send_results(self, update: Update, result):
+        from formatter import format_listing, format_summary_header
+
         if not result.new_listings:
             await update.message.reply_text(
-                f"✅ *Scan complete*\n\n"
-                f"Scanned {result.total_scraped} listings — no new matches.\n"
-                f"Errors: {len(result.errors)}",
+                f"✅ *סריקה הושלמה*\n\n"
+                f"נסרקו {result.total_scraped} מודעות — אין דירות חדשות.\n"
+                f"שגיאות: {len(result.errors)}",
                 parse_mode='Markdown',
             )
             return
 
-        from datetime import datetime
-        header = (
-            f"🏠 *{len(result.new_listings)} new apartment(s) found!*\n"
-            f"⏰ {datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
-            f"📊 Scanned: {result.total_scraped}\n"
-            "━━━━━━━━━━━━━━━━━━━━━\n\n"
-        )
+        # Summary header as one message
+        header = format_summary_header(len(result.new_listings), result.total_scraped)
+        await update.message.reply_text(header, parse_mode='Markdown')
 
-        blocks = []
-        for i, lst in enumerate(result.new_listings[:10], 1):
-            title = (lst.get('title') or 'Apartment')[:50]
-            block = f"*{i}. {title}*\n"
-            if lst.get('location'):
-                block += f"📍 {lst['location']}\n"
-            if lst.get('price'):
-                block += f"💰 ₪{lst['price']:,}\n"
-            if lst.get('rooms'):
-                block += f"🛏 {lst['rooms']} rooms\n"
-            if lst.get('url'):
-                block += f"🔗 [View]({lst['url']})\n"
-            block += f"_Source: {lst.get('source', '?')}_\n"
-            blocks.append(block)
+        # Each listing as a separate message (cleaner, easier to read)
+        for lst in result.new_listings[:15]:
+            try:
+                msg = format_listing(lst)
+                await update.message.reply_text(msg, parse_mode='Markdown',
+                                                disable_web_page_preview=True)
+            except Exception as e:
+                logger.error(f"Formatter error: {e}")
 
-        body = '\n'.join(blocks)
-        if len(result.new_listings) > 10:
-            body += f"\n_+ {len(result.new_listings) - 10} more in database_"
-
-        await update.message.reply_text(header + body, parse_mode='Markdown')
+        if len(result.new_listings) > 15:
+            await update.message.reply_text(
+                f"_ועוד {len(result.new_listings) - 15} דירות נוספות בבסיס הנתונים_",
+                parse_mode='Markdown',
+            )
 
     # ------------------------------------------------------------------
     # Run
