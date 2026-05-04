@@ -1,6 +1,5 @@
 """
-Debug script — opens Yad2, waits for you to solve any CAPTCHA,
-then saves the page HTML so we can find the right selectors.
+Debug script — find the exact class names for Yad2 listing cards.
 """
 import sys, time, yaml
 sys.path.insert(0, 'src')
@@ -9,7 +8,6 @@ from scrapers.base_scraper import BaseScraper
 with open('config.yaml') as f:
     config = yaml.safe_load(f)
 
-# Force headless off so you can see + solve CAPTCHA
 config['browser']['headless'] = False
 
 s = BaseScraper(config)
@@ -21,46 +19,36 @@ url = (
     "&multiNeighborhood=344%2C808%2C1501"
 )
 
-print("Opening Yad2... solve CAPTCHA if it appears.")
+print("Opening Yad2...")
 s.page.goto(url, wait_until='domcontentloaded', timeout=60000)
-print("Page loaded. Waiting 15 seconds (solve CAPTCHA now if needed)...")
+print("Waiting 15 seconds (solve CAPTCHA if needed)...")
 time.sleep(15)
 
-# Save full HTML
-html = s.page.content()
-with open('debug_yad2.html', 'w', encoding='utf-8') as f:
-    f.write(html)
-print(f"HTML saved to debug_yad2.html ({len(html):,} chars)")
+# Print the class names + text of each Card element
+cards = s.page.query_selector_all('[class*="Card"]')
+print(f"\nFound {len(cards)} [class*=Card] elements\n")
 
-# Try every candidate selector and report counts
-selectors = [
-    '[class*="feed"]',
-    '[class*="Feed"]',
-    '[class*="item"]',
-    '[class*="Item"]',
-    '[class*="listing"]',
-    '[class*="Listing"]',
-    '[class*="card"]',
-    '[class*="Card"]',
-    'article',
-    'li[class*="item"]',
-    'li[class*="feed"]',
-    '[data-testid]',
-    '[data-nagish]',
-]
+for i, card in enumerate(cards[:15], 1):
+    cls = card.get_attribute('class') or ''
+    text = card.inner_text()[:120].replace('\n', ' | ')
+    # Check if it has a link
+    link = card.query_selector('a')
+    href = link.get_attribute('href') if link else 'no link'
+    print(f"[{i:02d}] class: {cls[:80]}")
+    print(f"      href : {href}")
+    print(f"      text : {text}")
+    print()
 
-print("\nSelector scan:")
-for sel in selectors:
-    try:
-        els = s.page.query_selector_all(sel)
-        if els:
-            sample = els[0].inner_text()[:80].replace('\n', ' ')
-            print(f"  {len(els):3d}  {sel}   →  \"{sample}\"")
-    except Exception as e:
-        print(f"  ERR  {sel}  ({e})")
-
-print("\nPage title:", s.page.title())
-print("Page URL:  ", s.page.url)
+# Also check data-testid values on card-like elements
+print("\n--- data-testid values on feed items ---")
+testids = s.page.query_selector_all('[data-testid]')
+seen = set()
+for el in testids:
+    tid = el.get_attribute('data-testid') or ''
+    if tid and tid not in seen and any(w in tid.lower() for w in ['feed','item','card','listing','result']):
+        seen.add(tid)
+        text = el.inner_text()[:80].replace('\n', ' | ')
+        print(f"  data-testid={tid!r:40s}  →  {text}")
 
 s.close_browser()
-print("\nDone. Paste the output above back to Claude.")
+print("\nDone. Paste everything above back to Claude.")

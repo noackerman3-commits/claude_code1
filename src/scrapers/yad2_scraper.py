@@ -114,65 +114,81 @@ class Yad2Scraper(BaseScraper):
         return self._default_base_url
 
     def _find_listing_elements(self):
-        for selector in ['.feeditem', '[data-testid="feed-item"]', '.feed_item', 'article']:
+        # 1. Cards that contain a direct listing link — most reliable
+        try:
+            all_cards = self.page.query_selector_all('[class*="Card"],[class*="card"]')
+            listing_cards = [c for c in all_cards if c.query_selector('a[href*="/item/"]')]
+            if listing_cards:
+                logger.debug(f"Yad2: {len(listing_cards)} listing cards found via [class*=Card]")
+                return listing_cards
+        except Exception:
+            pass
+
+        # 2. Feed item selectors (older Yad2 HTML)
+        for selector in [
+            '[class*="FeedItem"]', '[class*="feeditem"]', '[class*="feed-item"]',
+            '[class*="feedItem"]', '.feeditem', '[data-testid="feed-item"]', 'article',
+        ]:
             try:
                 elements = self.page.query_selector_all(selector)
                 if elements:
-                    logger.debug(f"Yad2: found elements with selector '{selector}'")
+                    logger.debug(f"Yad2: {len(elements)} elements via '{selector}'")
                     return elements
             except Exception:
                 continue
+
         return None
 
     def _extract(self, element) -> Optional[Dict]:
         try:
-            # URL + ID
-            link = element.query_selector('a[href*="/item/"]') or element.query_selector('a')
+            # URL + ID — always from the /item/ link
+            link = element.query_selector('a[href*="/item/"]')
             url = link.get_attribute('href') if link else None
             if url and not url.startswith('http'):
                 url = f"https://www.yad2.co.il{url}"
 
-            listing_id = self._generate_id(url, element.inner_text())
+            raw_text = element.inner_text().strip()
+            if not raw_text:
+                return None
 
-            # Title
-            title = self._first_text(element, ['.title', '[data-testid="title"]', 'h3', 'h2'])
+            listing_id = self._generate_id(url, raw_text)
 
-            # Price
-            price_text = self._first_text(element, ['.price', '[data-testid="price"]', '[class*="price"]'])
-            price = self.extract_price(price_text) if price_text else None
-
-            # Rooms
-            rooms_text = self._first_text(element, ['.rooms', '[data-testid="rooms"]', '[class*="room"]'])
-            rooms = self.extract_rooms(rooms_text) if rooms_text else None
-            if not rooms:
-                from utils import extract_rooms_from_text
-                rooms = extract_rooms_from_text(element.inner_text())
-
-            # Location
-            location = self._first_text(
-                element,
-                ['.city', '[data-testid="city"]', '[class*="location"]', '[class*="city"]'],
-            )
-
-            # Image
-            image_url = None
-            for sel in ['img', '[class*="image"] img']:
-                img = element.query_selector(sel)
-                if img:
-                    image_url = img.get_attribute('src')
-                    break
-
-            raw_text = element.inner_text()
-
-            # Amenities + extra fields from raw text
+            # All structured data extracted from raw text — works regardless of
+            # which CSS classes Yad2 uses internally
             from utils import (
+                extract_price_from_text,
+                extract_rooms_from_text,
                 extract_amenities_from_text,
                 extract_size_from_text,
                 extract_floor_from_text,
             )
-            amenities = extract_amenities_from_text(raw_text)
+            price    = extract_price_from_text(raw_text)
+            rooms    = extract_rooms_from_text(raw_text)
             size_sqm = extract_size_from_text(raw_text)
-            floor = extract_floor_from_text(raw_text)
+            floor    = extract_floor_from_text(raw_text)
+            amenities = extract_amenities_from_text(raw_text)
+
+            # Location — try selector first, fall back to first non-numeric line
+            location = self._first_text(
+                element,
+                ['[class*="city"]', '[class*="location"]', '[class*="address"]',
+                 '[data-testid="city"]', '[data-testid="address"]'],
+            )
+            if not location:
+                for line in raw_text.split('\n'):
+                    line = line.strip()
+                    if line and not any(c.isdigit() for c in line[:3]) and len(line) > 3:
+                        location = line
+                        break
+
+            # Title — first meaningful line
+            title = raw_text.split('\n')[0][:120].strip()
+
+            # Image
+            image_url = None
+            img = element.query_selector('img')
+            if img:
+                image_url = img.get_attribute('src')
 
             return {
                 'listing_id': listing_id,
