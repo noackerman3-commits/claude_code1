@@ -31,14 +31,26 @@ class BaseScraper:
             user_agent = scraping_config.get('user_agent',
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
 
-            # Launch browser with persistent context
-            self.context = self.playwright.chromium.launch_persistent_context(
-                persistent_path,
+            # Auto-detect Chrome executable if the default Playwright path is missing
+            import os, glob
+            executable_path = browser_config.get('executable_path') or self._find_chrome()
+
+            launch_kwargs = dict(
                 headless=headless,
                 user_agent=user_agent,
                 viewport={'width': 1920, 'height': 1080},
                 locale='he-IL',
-                timezone_id='Asia/Jerusalem'
+                timezone_id='Asia/Jerusalem',
+                ignore_https_errors=True,
+            )
+            if executable_path:
+                launch_kwargs['executable_path'] = executable_path
+                logger.info(f"Using Chrome at: {executable_path}")
+
+            os.makedirs(persistent_path, exist_ok=True)
+            self.context = self.playwright.chromium.launch_persistent_context(
+                persistent_path,
+                **launch_kwargs,
             )
 
             self.page = self.context.new_page()
@@ -105,3 +117,20 @@ class BaseScraper:
     def scrape(self):
         """Override this method in child classes."""
         raise NotImplementedError("Scrape method must be implemented by child class")
+
+    @staticmethod
+    def _find_chrome() -> str | None:
+        """Find the Chrome/Chromium executable on this machine."""
+        import glob
+        candidates = glob.glob('/opt/pw-browsers/chromium-*/chrome-linux/chrome')
+        if candidates:
+            return sorted(candidates)[-1]  # newest version
+        for path in [
+            '/usr/bin/chromium',
+            '/usr/bin/chromium-browser',
+            '/usr/bin/google-chrome',
+        ]:
+            import os
+            if os.path.exists(path):
+                return path
+        return None
