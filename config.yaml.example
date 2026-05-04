@@ -1,47 +1,44 @@
-# Rental Agent Configuration - EXAMPLE
-# Copy this to config.yaml and fill in your values
-
-search_parameters:
-  price_range:
-    min: 2000
-    max: 5000
-  locations:
-    - "Tel Aviv"
-    - "Ramat Gan"
-  min_rooms: 2
-  must_have_keywords:
-    - "מעלית"
-    - "מרפסת"
-  exclude_keywords:
-    - "דירת חלוקה"
-
-sources:
-  yad2:
-    enabled: true
-    base_url: "https://www.yad2.co.il/realestate/rent"
-  facebook:
-    enabled: true
-    groups:
-      - name: "Group1"
-        url: "https://www.facebook.com/groups/YOUR_GROUP_ID_1"
-      - name: "Group2"
-        url: "https://www.facebook.com/groups/YOUR_GROUP_ID_2"
-      - name: "Group3"
-        url: "https://www.facebook.com/groups/YOUR_GROUP_ID_3"
-
-telegram:
-  bot_token: "YOUR_BOT_TOKEN"  # Get from @BotFather
-  chat_id: "YOUR_CHAT_ID"      # Get from @userinfobot
-
-scraping:
-  scroll_count: 10
-  delay_min: 2
-  delay_max: 5
-  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-
 browser:
-  persistent_context_path: "./browser_data"
   headless: false
-
+  persistent_context_path: ./browser_data
 database:
-  path: "./data/listings.db"
+  path: ./data/listings.db
+scraping:
+  delay_max: 5
+  delay_min: 2
+  scroll_count: 10
+  user_agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
+    like Gecko) Chrome/120.0.0.0 Safari/537.36
+search_parameters:
+  exclude_keywords:
+  - דירת חלוקה
+  - shared
+  locations:
+  - Tel Aviv
+  - Ramat Gan
+  - Kfar Saba, Herzelyia, Raanana, Shoham, Beit Aryieh, North District
+  - רעננה, כפר סבא, הוד השרון, בית אריה, עמק יזרעאל, השרון, תל מונד, הרצליה, בבלי,
+    שוהם
+  min_rooms: 3.0
+  must_have_keywords:
+  - מעלית
+  - מרפסת
+  price_range:
+    max: 11000
+    min: 6000
+sources:
+  facebook:
+    enabled: false
+    groups:
+    - name: Group1
+      url: https://www.facebook.com/groups/1663070923962851/
+    - name: Group2
+      url: https://www.facebook.com/groups/1617402861868870
+    - name: Group3
+      url: https://www.facebook.com/groups/3697622177026947
+  yad2:
+    base_url: https://www.yad2.co.il/realestate/rent/center-and-sharon?minPrice=6000&maxPrice=11000&minRooms=3&maxRooms=4&multiNeighborhood=344%2C808%2C1501
+    enabled: true
+telegram:
+  bot_token: 8623779257:AAGo_I-IB34sDqOFI_oOy7h-1PZ5PXougm0
+  chat_id: '6751940149'
