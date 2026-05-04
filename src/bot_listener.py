@@ -337,6 +337,23 @@ class ListingBot:
     # Results — professional real-estate format
     # ------------------------------------------------------------------
 
+    async def _send_listing(self, update: Update, text: str, image_url: str | None):
+        """Send a listing card. Uses photo+caption when an image is available."""
+        _CAPTION_LIMIT = 1024
+        if image_url and len(text) <= _CAPTION_LIMIT:
+            try:
+                await update.message.reply_photo(
+                    photo=image_url,
+                    caption=text,
+                    parse_mode='Markdown',
+                )
+                return
+            except Exception as e:
+                logger.debug(f"reply_photo failed ({e}), falling back to text")
+        await update.message.reply_text(
+            text, parse_mode='Markdown', disable_web_page_preview=True
+        )
+
     async def _send_results(self, update: Update, result):
         from formatter import format_listing, format_summary_header
 
@@ -357,8 +374,7 @@ class ListingBot:
         for lst in result.new_listings[:15]:
             try:
                 msg = format_listing(lst)
-                await update.message.reply_text(msg, parse_mode='Markdown',
-                                                disable_web_page_preview=True)
+                await self._send_listing(update, msg, lst.get('image_url'))
             except Exception as e:
                 logger.error(f"Formatter error: {e}")
 
