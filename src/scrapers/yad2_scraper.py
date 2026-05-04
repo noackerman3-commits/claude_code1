@@ -220,8 +220,10 @@ class Yad2Scraper(BaseScraper):
 
     def _generate_id(self, url: Optional[str], text: str) -> str:
         if url and '/item/' in url:
-            parts = url.split('/item/')
-            if len(parts) > 1:
-                item_id = parts[1].split('?')[0].split('/')[0]
-                return f"yad2_{item_id}"
+            # URL format: /item/CITY/LISTING-ID or /item/LISTING-ID
+            # Always take the LAST non-empty path segment after /item/
+            after = url.split('/item/', 1)[1].split('?')[0]
+            parts = [p for p in after.split('/') if p]
+            if parts:
+                return f"yad2_{parts[-1]}"
         return f"yad2_{hashlib.md5(text.encode('utf-8')).hexdigest()[:12]}"
