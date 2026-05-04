@@ -16,13 +16,13 @@ class FilterEngine:
         self.max_price: int = price.get('max', 999999)
         self.min_rooms: float | None = search_params.get('min_rooms')
         self.locations: list[str] = [
-            loc.lower() for loc in search_params.get('locations', [])
+            loc.lower() for loc in (search_params.get('locations') or [])
         ]
         self.must_have: list[str] = [
-            kw.lower() for kw in search_params.get('must_have_keywords', [])
+            kw.lower() for kw in (search_params.get('must_have_keywords') or [])
         ]
         self.exclude: list[str] = [
-            kw.lower() for kw in search_params.get('exclude_keywords', [])
+            kw.lower() for kw in (search_params.get('exclude_keywords') or [])
         ]
 
     def matches(self, listing: dict) -> Tuple[bool, str]:
