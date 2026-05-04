@@ -1,11 +1,20 @@
 """
 Yad2 scraper for rental listings.
+
+scrape_one(search_config) — scrapes a single URL defined in search_config.
+scrape()                   — backward-compat wrapper that reads searches
+                             from config and calls scrape_one for each.
+
+ScrapingManager always calls scrape_one directly and manages the browser
+lifecycle (initialize_browser / close_browser) itself so that one browser
+session is reused across all 50 searches instead of starting Playwright 50×.
 """
-import logging
-from typing import List, Dict, Optional
-from urllib.parse import urlencode
-from .base_scraper import BaseScraper
 import hashlib
+import logging
+from typing import Dict, List, Optional
+from urllib.parse import urlencode
+
+from .base_scraper import BaseScraper
 
 logger = logging.getLogger(__name__)
 
@@ -13,188 +22,189 @@ logger = logging.getLogger(__name__)
 class Yad2Scraper(BaseScraper):
     def __init__(self, config: dict):
         super().__init__(config)
-        self.base_url = config.get('sources', {}).get('yad2', {}).get('base_url',
-            'https://www.yad2.co.il/realestate/rent')
+        yad2_cfg = config.get('sources', {}).get('yad2', {})
+        self._default_base_url = yad2_cfg.get(
+            'base_url', 'https://www.yad2.co.il/realestate/rent'
+        )
 
-    def build_search_url(self) -> str:
-        """Build search URL from config parameters."""
-        search_params = self.config.get('search_parameters', {})
-        price_range = search_params.get('price_range', {})
+    # ------------------------------------------------------------------
+    # Public
+    # ------------------------------------------------------------------
 
-        # Yad2 uses specific query parameters
-        params = {}
-
-        if price_range.get('min'):
-            params['priceOnly'] = '1'
-            params['price'] = f"{price_range['min']}-{price_range.get('max', 99999)}"
-
-        if search_params.get('min_rooms'):
-            params['rooms'] = f"{search_params['min_rooms']}-99"
-
-        # Add locations if specified
-        locations = search_params.get('locations', [])
-        if locations:
-            # For simplicity, we'll just use the base URL and filter by location text
-            # Full implementation would map locations to Yad2's city codes
-            pass
-
-        if params:
-            return f"{self.base_url}?{urlencode(params)}"
-        return self.base_url
-
-    def scrape(self) -> List[Dict]:
-        """Scrape Yad2 listings."""
+    def scrape_one(self, search_config: dict) -> List[Dict]:
+        """
+        Scrape a single search URL.
+        search_config keys:
+          name (str)  — display name for logging
+          url  (str)  — full Yad2 search URL (use this if present)
+        Browser must already be initialized by the caller.
+        """
+        url = search_config.get('url') or self._build_url_from_config()
         listings = []
 
         try:
             if not self.page:
                 self.initialize_browser()
 
-            search_url = self.build_search_url()
-            logger.info(f"Navigating to Yad2: {search_url}")
-
-            self.page.goto(search_url, wait_until='networkidle', timeout=30000)
+            logger.info(f"Yad2 → {url}")
+            self.page.goto(url, wait_until='networkidle', timeout=30000)
             self.random_delay()
 
-            # Wait for listings to load
             try:
                 self.page.wait_for_selector('.feed_list', timeout=10000)
-            except:
-                logger.warning("Feed list not found, trying alternative selectors")
+            except Exception:
+                pass
 
-            # Extract listing cards - using multiple selectors as fallback
-            selectors = [
-                '.feeditem',
-                '[data-testid="feed-item"]',
-                '.feed_item',
-                'article'
-            ]
-
-            listing_elements = None
-            for selector in selectors:
-                try:
-                    listing_elements = self.page.query_selector_all(selector)
-                    if listing_elements:
-                        logger.info(f"Found {len(listing_elements)} listings using selector: {selector}")
-                        break
-                except:
-                    continue
-
-            if not listing_elements:
-                logger.warning("No listings found on Yad2")
+            elements = self._find_listing_elements()
+            if not elements:
+                logger.warning(f"No listings found at {url}")
                 return listings
 
-            for element in listing_elements[:20]:  # Limit to first 20 listings
+            for element in elements[:20]:
                 try:
-                    listing = self.extract_listing_data(element)
+                    listing = self._extract(element)
                     if listing:
                         listings.append(listing)
                 except Exception as e:
                     logger.error(f"Error extracting listing: {e}")
-                    continue
 
-            logger.info(f"Successfully scraped {len(listings)} listings from Yad2")
+            logger.info(f"Yad2 scraped {len(listings)} listings from {url}")
 
         except Exception as e:
-            logger.error(f"Error scraping Yad2: {e}")
+            logger.error(f"Yad2 error for {url}: {e}")
 
         return listings
 
-    def extract_listing_data(self, element) -> Optional[Dict]:
-        """Extract data from a single listing element."""
-        try:
-            # Extract URL and listing ID
-            link_element = element.query_selector('a[href*="/item/"]')
-            if not link_element:
-                link_element = element.query_selector('a')
+    def scrape(self) -> List[Dict]:
+        """Backward-compat: iterate all searches in config."""
+        searches = (
+            self.config.get('sources', {})
+            .get('yad2', {})
+            .get('searches', [])
+        )
+        if not searches:
+            searches = [{'name': 'Default', 'url': self._build_url_from_config()}]
 
-            url = link_element.get_attribute('href') if link_element else None
+        if not self.page:
+            self.initialize_browser()
+
+        all_listings: List[Dict] = []
+        for search_cfg in searches:
+            all_listings.extend(self.scrape_one(search_cfg))
+        return all_listings
+
+    # ------------------------------------------------------------------
+    # Internal
+    # ------------------------------------------------------------------
+
+    def _build_url_from_config(self) -> str:
+        search_params = self.config.get('search_parameters', {})
+        price_range = search_params.get('price_range', {})
+        params: Dict[str, str] = {}
+
+        if price_range.get('min'):
+            params['priceOnly'] = '1'
+            params['price'] = f"{price_range['min']}-{price_range.get('max', 99999)}"
+        if search_params.get('min_rooms'):
+            params['rooms'] = f"{search_params['min_rooms']}-99"
+
+        if params:
+            return f"{self._default_base_url}?{urlencode(params)}"
+        return self._default_base_url
+
+    def _find_listing_elements(self):
+        for selector in ['.feeditem', '[data-testid="feed-item"]', '.feed_item', 'article']:
+            try:
+                elements = self.page.query_selector_all(selector)
+                if elements:
+                    logger.debug(f"Yad2: found elements with selector '{selector}'")
+                    return elements
+            except Exception:
+                continue
+        return None
+
+    def _extract(self, element) -> Optional[Dict]:
+        try:
+            # URL + ID
+            link = element.query_selector('a[href*="/item/"]') or element.query_selector('a')
+            url = link.get_attribute('href') if link else None
             if url and not url.startswith('http'):
                 url = f"https://www.yad2.co.il{url}"
 
-            # Generate listing ID from URL or element hash
-            listing_id = self.generate_listing_id(url, element.inner_text())
+            listing_id = self._generate_id(url, element.inner_text())
 
-            # Extract title
-            title_selectors = ['.title', '[data-testid="title"]', 'h3', 'h2']
-            title = None
-            for selector in title_selectors:
-                title_element = element.query_selector(selector)
-                if title_element:
-                    title = title_element.inner_text().strip()
-                    break
+            # Title
+            title = self._first_text(element, ['.title', '[data-testid="title"]', 'h3', 'h2'])
 
-            # Extract price
-            price_selectors = ['.price', '[data-testid="price"]', '[class*="price"]']
-            price = None
-            for selector in price_selectors:
-                price_element = element.query_selector(selector)
-                if price_element:
-                    price_text = price_element.inner_text().strip()
-                    price = self.extract_price(price_text)
-                    break
+            # Price
+            price_text = self._first_text(element, ['.price', '[data-testid="price"]', '[class*="price"]'])
+            price = self.extract_price(price_text) if price_text else None
 
-            # Extract rooms
-            rooms_selectors = ['.rooms', '[data-testid="rooms"]', '[class*="room"]']
-            rooms = None
-            for selector in rooms_selectors:
-                rooms_element = element.query_selector(selector)
-                if rooms_element:
-                    rooms_text = rooms_element.inner_text().strip()
-                    rooms = self.extract_rooms(rooms_text)
-                    break
-
-            # If rooms not found in specific element, try to extract from full text
+            # Rooms
+            rooms_text = self._first_text(element, ['.rooms', '[data-testid="rooms"]', '[class*="room"]'])
+            rooms = self.extract_rooms(rooms_text) if rooms_text else None
             if not rooms:
-                full_text = element.inner_text()
                 from utils import extract_rooms_from_text
-                rooms = extract_rooms_from_text(full_text)
+                rooms = extract_rooms_from_text(element.inner_text())
 
-            # Extract location
-            location_selectors = ['.city', '[data-testid="city"]', '[class*="location"]', '[class*="city"]']
-            location = None
-            for selector in location_selectors:
-                location_element = element.query_selector(selector)
-                if location_element:
-                    location = location_element.inner_text().strip()
-                    break
+            # Location
+            location = self._first_text(
+                element,
+                ['.city', '[data-testid="city"]', '[class*="location"]', '[class*="city"]'],
+            )
 
-            # Extract image
-            image_selectors = ['img', '[class*="image"] img']
+            # Image
             image_url = None
-            for selector in image_selectors:
-                image_element = element.query_selector(selector)
-                if image_element:
-                    image_url = image_element.get_attribute('src')
+            for sel in ['img', '[class*="image"] img']:
+                img = element.query_selector(sel)
+                if img:
+                    image_url = img.get_attribute('src')
                     break
 
-            listing = {
+            raw_text = element.inner_text()
+
+            # Amenities + extra fields from raw text
+            from utils import (
+                extract_amenities_from_text,
+                extract_size_from_text,
+                extract_floor_from_text,
+            )
+            amenities = extract_amenities_from_text(raw_text)
+            size_sqm = extract_size_from_text(raw_text)
+            floor = extract_floor_from_text(raw_text)
+
+            return {
                 'listing_id': listing_id,
                 'source': 'yad2',
                 'url': url,
                 'title': title,
                 'price': price,
                 'rooms': rooms,
+                'floor': floor,
+                'size_sqm': size_sqm,
                 'location': location,
                 'image_url': image_url,
-                'full_text': element.inner_text()
+                'raw_text': raw_text,
+                **amenities,
             }
 
-            return listing
-
         except Exception as e:
-            logger.error(f"Error extracting listing data: {e}")
+            logger.error(f"Error extracting Yad2 listing: {e}")
             return None
 
-    def generate_listing_id(self, url: str, text: str) -> str:
-        """Generate unique listing ID."""
+    def _first_text(self, element, selectors: List[str]) -> Optional[str]:
+        for sel in selectors:
+            el = element.query_selector(sel)
+            if el:
+                text = el.inner_text().strip()
+                if text:
+                    return text
+        return None
+
+    def _generate_id(self, url: Optional[str], text: str) -> str:
         if url and '/item/' in url:
-            # Extract item ID from URL
             parts = url.split('/item/')
             if len(parts) > 1:
                 item_id = parts[1].split('?')[0].split('/')[0]
                 return f"yad2_{item_id}"
-
-        # Fallback: hash of text content
-        hash_obj = hashlib.md5(text.encode('utf-8'))
-        return f"yad2_{hash_obj.hexdigest()[:12]}"
+        return f"yad2_{hashlib.md5(text.encode('utf-8')).hexdigest()[:12]}"

@@ -1,47 +1,93 @@
-# Rental Agent Configuration - EXAMPLE
-# Copy this to config.yaml and fill in your values
+# ============================================================
+# Rental Agent — Configuration Template
+# Copy this file to config.yaml and fill in your values.
+# ============================================================
 
+# ------------------------------------------------------------
+# Search filters (applied to every listing from every source)
+# ------------------------------------------------------------
 search_parameters:
   price_range:
-    min: 2000
-    max: 5000
-  locations:
-    - "Tel Aviv"
-    - "Ramat Gan"
+    min: 3000
+    max: 7000
   min_rooms: 2
-  must_have_keywords:
-    - "מעלית"
-    - "מרפסת"
+  locations: []               # e.g. ["Tel Aviv", "Ramat Gan"] — leave [] for any city
+  must_have_keywords: []      # e.g. ["מעלית", "חניה"] — ALL must appear in listing text
   exclude_keywords:
     - "דירת חלוקה"
+    - "שותפים"
 
+# ------------------------------------------------------------
+# Sources
+# ------------------------------------------------------------
 sources:
+
+  # --- Yad2 ---
+  # Add up to 50 searches. Each entry needs a display name and a URL.
+  # Tip: perform the search you want on yad2.co.il, then copy the full URL.
   yad2:
     enabled: true
-    base_url: "https://www.yad2.co.il/realestate/rent"
+    searches:
+      - name: "Tel Aviv — 2-3 rooms"
+        url: "https://www.yad2.co.il/realestate/rent?city=5000&rooms=2-3"
+      - name: "Tel Aviv — 3-4 rooms"
+        url: "https://www.yad2.co.il/realestate/rent?city=5000&rooms=3-4"
+      - name: "Ramat Gan — 2-3 rooms"
+        url: "https://www.yad2.co.il/realestate/rent?city=8600&rooms=2-3"
+      - name: "Givatayim — 2-3 rooms"
+        url: "https://www.yad2.co.il/realestate/rent?city=6300&rooms=2-3"
+      - name: "Holon — 2-3 rooms"
+        url: "https://www.yad2.co.il/realestate/rent?city=6400&rooms=2-3"
+      - name: "Petah Tikva — 2-3 rooms"
+        url: "https://www.yad2.co.il/realestate/rent?city=7900&rooms=2-3"
+      - name: "Herzliya — 2-3 rooms"
+        url: "https://www.yad2.co.il/realestate/rent?city=6200&rooms=2-3"
+      - name: "Ra'anana — 2-3 rooms"
+        url: "https://www.yad2.co.il/realestate/rent?city=8300&rooms=2-3"
+      # Add more searches below (up to 50):
+      # - name: "Your Search Name"
+      #   url: "https://www.yad2.co.il/realestate/rent?..."
+
+  # --- Facebook Groups ---
+  # Add up to 20 groups. Paste the group URL from Facebook.
   facebook:
     enabled: true
     groups:
-      - name: "Group1"
-        url: "https://www.facebook.com/groups/YOUR_GROUP_ID_1"
-      - name: "Group2"
-        url: "https://www.facebook.com/groups/YOUR_GROUP_ID_2"
-      - name: "Group3"
-        url: "https://www.facebook.com/groups/YOUR_GROUP_ID_3"
+      - name: "SecretTLV"
+        url: "https://www.facebook.com/groups/SecretTLV"
+      - name: "דירות להשכרה תל אביב"
+        url: "https://www.facebook.com/groups/REPLACE_WITH_GROUP_ID"
+      - name: "דירות להשכרה רמת גן גבעתיים"
+        url: "https://www.facebook.com/groups/REPLACE_WITH_GROUP_ID"
+      # Add more groups below (up to 20):
+      # - name: "Group display name"
+      #   url: "https://www.facebook.com/groups/GROUP_ID"
 
+# ------------------------------------------------------------
+# Telegram
+# ------------------------------------------------------------
 telegram:
-  bot_token: "YOUR_BOT_TOKEN"  # Get from @BotFather
-  chat_id: "YOUR_CHAT_ID"      # Get from @userinfobot
+  bot_token: "YOUR_BOT_TOKEN"    # From @BotFather
+  chat_id: "YOUR_CHAT_ID"        # From @userinfobot
 
+# ------------------------------------------------------------
+# Scraping behaviour
+# ------------------------------------------------------------
 scraping:
-  scroll_count: 10
-  delay_min: 2
-  delay_max: 5
+  scroll_count: 10       # Facebook: how many times to scroll each group page
+  delay_min: 2           # Seconds — minimum random delay between actions
+  delay_max: 5           # Seconds — maximum random delay between actions
   user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
+# ------------------------------------------------------------
+# Browser (Playwright persistent context)
+# ------------------------------------------------------------
 browser:
   persistent_context_path: "./browser_data"
-  headless: false
+  headless: false    # Set true after first login; false to log in manually
 
+# ------------------------------------------------------------
+# Database
+# ------------------------------------------------------------
 database:
   path: "./data/listings.db"

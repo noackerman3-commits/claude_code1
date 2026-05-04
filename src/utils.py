@@ -3,13 +3,12 @@ Utility functions for the rental agent.
 """
 import logging
 import re
-from typing import List, Optional
 import os
 from datetime import datetime
+from typing import Dict, List, Optional
 
 
 def setup_logging(log_dir: str = "logs"):
-    """Configure file and console logging."""
     if not os.path.exists(log_dir):
         os.makedirs(log_dir)
 
@@ -20,131 +19,209 @@ def setup_logging(log_dir: str = "logs"):
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
             logging.FileHandler(log_file, encoding='utf-8'),
-            logging.StreamHandler()
-        ]
+            logging.StreamHandler(),
+        ],
     )
+    logging.getLogger(__name__).info("Logging initialized")
 
-    logger = logging.getLogger(__name__)
-    logger.info("Logging initialized")
 
+# ------------------------------------------------------------------
+# Keyword matching (used by FilterEngine)
+# ------------------------------------------------------------------
 
 def matches_keywords(text: str, keywords: List[str]) -> bool:
-    """Check if text contains all must-have keywords."""
+    """True if text contains ALL keywords (case-insensitive)."""
     if not keywords:
         return True
-
     if not text:
         return False
-
     text_lower = text.lower()
-    return all(keyword.lower() in text_lower for keyword in keywords)
+    return all(kw.lower() in text_lower for kw in keywords)
 
 
 def excludes_keywords(text: str, keywords: List[str]) -> bool:
-    """Check if text contains any exclude keywords."""
-    if not keywords:
+    """True if text contains ANY of the exclude keywords."""
+    if not keywords or not text:
         return False
-
-    if not text:
-        return False
-
     text_lower = text.lower()
-    return any(keyword.lower() in text_lower for keyword in keywords)
+    return any(kw.lower() in text_lower for kw in keywords)
 
+
+# ------------------------------------------------------------------
+# Price
+# ------------------------------------------------------------------
 
 def normalize_price(price_str: str) -> Optional[int]:
-    """Convert price string to integer (e.g., '4,500 ₪' -> 4500)."""
+    """'4,500 ₪' → 4500"""
     if not price_str:
         return None
-
-    # Remove common currency symbols and text
-    price_str = price_str.replace('₪', '').replace('ILS', '').replace('שקל', '').replace('שח', '')
-    price_str = price_str.replace(',', '').replace(' ', '').strip()
-
-    # Extract digits
+    price_str = (
+        price_str.replace('₪', '').replace('ILS', '')
+        .replace('שקל', '').replace('שח', '')
+        .replace(',', '').replace(' ', '').strip()
+    )
     match = re.search(r'\d+', price_str)
     if match:
         try:
             return int(match.group())
         except ValueError:
             return None
-
     return None
 
 
+def extract_price_from_text(text: str) -> Optional[int]:
+    """Extract rental price from free text (Hebrew + English)."""
+    if not text:
+        return None
+    patterns = [
+        r'(\d{1,3}(?:,\d{3})*)\s*₪',
+        r'(\d{1,3}(?:,\d{3})*)\s*שקל',
+        r'(\d{1,3}(?:,\d{3})*)\s*שח',
+        r'(\d{1,3}(?:,\d{3})*)\s*ILS',
+        r'₪\s*(\d{1,3}(?:,\d{3})*)',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text)
+        if match:
+            try:
+                price = int(match.group(1).replace(',', ''))
+                if 1000 <= price <= 30000:
+                    return price
+            except ValueError:
+                continue
+    return None
+
+
+# ------------------------------------------------------------------
+# Rooms
+# ------------------------------------------------------------------
+
 def normalize_rooms(rooms_str: str) -> Optional[float]:
-    """Convert room string to float (e.g., '3 חדרים' -> 3.0)."""
+    """'3 חדרים' → 3.0"""
     if not rooms_str:
         return None
-
-    # Remove common words
-    rooms_str = rooms_str.replace('חדרים', '').replace('חדר', '').replace('rooms', '').replace('room', '')
-    rooms_str = rooms_str.replace('BR', '').replace('br', '').strip()
-
-    # Extract number (including decimals like 3.5)
+    rooms_str = (
+        rooms_str.replace('חדרים', '').replace('חדר', '')
+        .replace('rooms', '').replace('room', '')
+        .replace('BR', '').replace('br', '').strip()
+    )
     match = re.search(r'\d+\.?\d*', rooms_str)
     if match:
         try:
             return float(match.group())
         except ValueError:
             return None
-
-    return None
-
-
-def extract_price_from_text(text: str) -> Optional[int]:
-    """Extract price from free text (handles Hebrew and English)."""
-    if not text:
-        return None
-
-    # Pattern for price: number followed by currency indicator
-    patterns = [
-        r'(\d{1,3}(?:,\d{3})*)\s*₪',  # 4,500 ₪
-        r'(\d{1,3}(?:,\d{3})*)\s*שקל',  # 4,500 שקל
-        r'(\d{1,3}(?:,\d{3})*)\s*שח',  # 4,500 שח
-        r'(\d{1,3}(?:,\d{3})*)\s*ILS',  # 4,500 ILS
-        r'₪\s*(\d{1,3}(?:,\d{3})*)',  # ₪ 4,500
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, text)
-        if match:
-            price_str = match.group(1).replace(',', '')
-            try:
-                price = int(price_str)
-                # Sanity check: rental prices typically between 1000-20000
-                if 1000 <= price <= 20000:
-                    return price
-            except ValueError:
-                continue
-
     return None
 
 
 def extract_rooms_from_text(text: str) -> Optional[float]:
-    """Extract room count from free text (handles Hebrew and English)."""
+    """Extract room count from free text."""
     if not text:
         return None
-
-    # Pattern for rooms: number followed by room indicator
     patterns = [
-        r'(\d+\.?\d*)\s*חדרים',  # 3 חדרים
-        r'(\d+\.?\d*)\s*חדר',  # 3 חדר
-        r'(\d+\.?\d*)\s*rooms',  # 3 rooms
-        r'(\d+\.?\d*)\s*room',  # 3 room
-        r'(\d+\.?\d*)\s*BR',  # 3 BR
-        r'(\d+\.?\d*)\s*br',  # 3 br
+        r'(\d+\.?\d*)\s*חדרים',
+        r'(\d+\.?\d*)\s*חדר',
+        r'(\d+\.?\d*)\s*rooms',
+        r'(\d+\.?\d*)\s*room',
+        r'(\d+\.?\d*)\s*BR',
+        r'(\d+\.?\d*)\s*br',
     ]
-
     for pattern in patterns:
         match = re.search(pattern, text, re.IGNORECASE)
         if match:
             try:
                 rooms = float(match.group(1))
-                # Sanity check: room count typically between 1-10
                 if 1 <= rooms <= 10:
                     return rooms
             except ValueError:
                 continue
-
     return None
+
+
+# ------------------------------------------------------------------
+# Size (square metres)
+# ------------------------------------------------------------------
+
+def extract_size_from_text(text: str) -> Optional[float]:
+    """Extract apartment size in m² from free text."""
+    if not text:
+        return None
+    patterns = [
+        r'(\d+)\s*מ["״]ר',   # מ"ר / מ״ר
+        r'(\d+)\s*מטר(?:\s*רבוע)?',
+        r'(\d+)\s*sqm',
+        r'(\d+)\s*m²',
+        r'(\d+)\s*מ²',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            try:
+                size = float(match.group(1))
+                if 20 <= size <= 500:
+                    return size
+            except ValueError:
+                continue
+    return None
+
+
+# ------------------------------------------------------------------
+# Floor
+# ------------------------------------------------------------------
+
+def extract_floor_from_text(text: str) -> Optional[int]:
+    """Extract floor number from free text."""
+    if not text:
+        return None
+    patterns = [
+        r'קומה\s*(\d+)',          # קומה 3
+        r'(?:floor|fl\.?)\s*(\d+)',
+        r'(\d+)(?:st|nd|rd|th)\s*floor',
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            try:
+                floor = int(match.group(1))
+                if 0 <= floor <= 50:
+                    return floor
+            except ValueError:
+                continue
+    return None
+
+
+# ------------------------------------------------------------------
+# Amenities
+# ------------------------------------------------------------------
+
+def extract_amenities_from_text(text: str) -> Dict[str, bool]:
+    """
+    Return a dict of boolean amenity flags extracted from listing text.
+    Used by both Yad2 and Facebook scrapers.
+    """
+    if not text:
+        return _empty_amenities()
+
+    t = text.lower()
+
+    return {
+        'has_mamad':    _any(t, ['ממ"ד', 'ממד', "ממ'ד", 'mamad', 'safe room', 'shelter']),
+        'has_parking':  _any(t, ['חניה', 'חנייה', 'חנייה פרטית', 'parking', 'garage']),
+        'has_balcony':  _any(t, ['מרפסת', 'balcony', 'terrace', 'טרס', 'patio']),
+        'has_elevator': _any(t, ['מעלית', 'elevator', 'lift']),
+        'has_ac':       _any(t, ['מזגן', 'מיזוג', 'air condition', 'מיזוג אוויר', 'ac']),
+    }
+
+
+def _any(text: str, keywords: List[str]) -> bool:
+    return any(kw.lower() in text for kw in keywords)
+
+
+def _empty_amenities() -> Dict[str, bool]:
+    return {
+        'has_mamad': False,
+        'has_parking': False,
+        'has_balcony': False,
+        'has_elevator': False,
+        'has_ac': False,
+    }
