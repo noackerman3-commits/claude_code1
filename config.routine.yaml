@@ -56,6 +56,14 @@ sources:
         url: https://www.facebook.com/groups/1617402861868870
       - name: Group3
         url: https://www.facebook.com/groups/3697622177026947
+      - name: Group4
+        url: https://www.facebook.com/groups/1046998859905634
+      - name: Group5
+        url: https://www.facebook.com/groups/281771555358339
+      - name: Group6
+        url: https://www.facebook.com/groups/267267393381804
+      - name: Group7
+        url: https://www.facebook.com/groups/1662194610917822
 
 telegram:
   bot_token: ""   # overridden by RENTAL_BOT_TOKEN env var
