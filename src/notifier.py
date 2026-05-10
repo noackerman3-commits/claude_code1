@@ -113,3 +113,40 @@ class TelegramNotifier:
         except Exception as e:
             logger.error(f"Error sending message: {e}")
             return False
+
+    def send_scan_summary(self, new_listings: list, total_scraped: int, total_in_db: int) -> bool:
+        """Send daily scan summary regardless of whether new listings were found."""
+        from datetime import datetime
+        timestamp = datetime.now().strftime('%d/%m/%Y %H:%M')
+
+        if new_listings:
+            header = f"🏠 *New Apartments Found: {len(new_listings)}*\n"
+            header += f"⏰ Daily scan — {timestamp}\n"
+            header += "━━━━━━━━━━━━━━━━━━━━━\n\n"
+
+            for i, listing in enumerate(new_listings[:10], 1):
+                header += f"*{i}. {listing.get('title', 'Apartment')[:50]}*\n"
+                if listing.get('location'):
+                    header += f"📍 {listing['location']}\n"
+                if listing.get('price'):
+                    header += f"💰 ₪{listing['price']:,}\n"
+                if listing.get('rooms'):
+                    header += f"🛏 {listing['rooms']} rooms\n"
+                if listing.get('url'):
+                    header += f"🔗 [View Listing]({listing['url']})\n"
+                header += f"_Source: {listing.get('source', 'Unknown')}_\n\n"
+
+            if len(new_listings) > 10:
+                header += f"_+ {len(new_listings) - 10} more listings saved to database_\n\n"
+
+            header += f"📊 Scanned: {total_scraped} | New: {len(new_listings)} | Total saved: {total_in_db}"
+            return self.send_message(header)
+        else:
+            message = (
+                f"✅ *Daily Scan Complete*\n"
+                f"⏰ {timestamp}\n"
+                f"━━━━━━━━━━━━━━━━━━━━━\n"
+                f"No new listings found today.\n\n"
+                f"📊 Scanned: {total_scraped} | Total saved: {total_in_db}"
+            )
+            return self.send_message(message)
