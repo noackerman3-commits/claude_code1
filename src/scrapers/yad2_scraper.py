@@ -114,64 +114,74 @@ class Yad2Scraper(BaseScraper):
         return self._default_base_url
 
     def _find_listing_elements(self):
-        # 1. Best: actual search results inside the feed-list container.
-        #    Yad2 also renders a "recommendations" section above the real results;
-        #    scoping to feed-list excludes those completely.
+        """
+        Return a list of unique link elements (<a href="/item/...">) from the
+        actual search-results feed (not the recommendations sidebar).
+        Deduplication is done here by listing ID so _extract is never called
+        twice for the same property.
+        """
         try:
             feed = self.page.query_selector('[data-testid="feed-list"]')
-            if feed:
-                cards = feed.query_selector_all('[class*="property-ad-card"]')
-                if cards:
-                    logger.debug(f"Yad2: {len(cards)} cards inside feed-list")
-                    return cards
-        except Exception:
-            pass
+            scope = feed if feed else self.page
+            scope_name = 'feed-list' if feed else 'page'
 
-        # 2. Page-wide property-ad-card elements that contain a listing link.
-        try:
-            cards = self.page.query_selector_all('[class*="property-ad-card"]')
-            listing_cards = [c for c in cards if c.query_selector('a[href*="/item/"]')]
-            if listing_cards:
-                logger.debug(f"Yad2: {len(listing_cards)} property-ad-cards with /item/ links")
-                return listing_cards
-        except Exception:
-            pass
+            links = scope.query_selector_all('a[href*="/item/"]')
+            seen_ids, unique_links = set(), []
+            for link in links:
+                href = link.get_attribute('href') or ''
+                if '/item/' not in href:
+                    continue
+                after = href.split('/item/', 1)[1].split('?')[0]
+                parts = [p for p in after.split('/') if p]
+                item_id = parts[-1] if parts else None
+                if not item_id or item_id in seen_ids:
+                    continue
+                seen_ids.add(item_id)
+                unique_links.append(link)
 
-        # 3. Legacy fallback selectors (older Yad2 HTML)
+            if unique_links:
+                logger.debug(f"Yad2: {len(unique_links)} unique links in {scope_name}")
+                return unique_links
+        except Exception as e:
+            logger.debug(f"Link-based element search failed: {e}")
+
+        # Legacy fallback
         for selector in [
             '[class*="FeedItem"]', '[class*="feeditem"]', '[class*="feed-item"]',
-            '[class*="feedItem"]', '.feeditem', '[data-testid="feed-item"]', 'article',
+            '[class*="feedItem"]', '.feeditem', 'article',
         ]:
             try:
-                elements = self.page.query_selector_all(selector)
-                if elements:
-                    logger.debug(f"Yad2: {len(elements)} elements via '{selector}'")
-                    return elements
+                els = self.page.query_selector_all(selector)
+                if els:
+                    return els
             except Exception:
                 continue
-
         return None
 
     def _extract(self, element) -> Optional[Dict]:
         try:
-            # URL + ID — always from the /item/ link
-            link = element.query_selector('a[href*="/item/"]')
-            url = link.get_attribute('href') if link else None
-            if url and not url.startswith('http'):
-                url = f"https://www.yad2.co.il{url}"
+            # Support both <a> link elements (new) and card elements (fallback).
+            is_link = element.evaluate('el => el.tagName === "A"')
+            if is_link:
+                href = element.get_attribute('href') or ''
+                url = f"https://www.yad2.co.il{href}" if not href.startswith('http') else href
+                raw_text = self._get_container_text(element)
+            else:
+                link = element.query_selector('a[href*="/item/"]')
+                if not link:
+                    return None  # no listing link → not a real listing element
+                href = link.get_attribute('href') or ''
+                url = f"https://www.yad2.co.il{href}" if not href.startswith('http') else href
+                raw_text = element.inner_text().strip()
 
-            raw_text = element.inner_text().strip()
-            if not raw_text:
+            if not url or '/item/' not in url or not raw_text:
                 return None
 
             listing_id = self._generate_id(url, raw_text)
 
-            # All structured data extracted from raw text — works regardless of
-            # which CSS classes Yad2 uses internally
             from utils import (
                 extract_price_from_text,
                 extract_rooms_from_text,
-                extract_amenities_from_text,
                 extract_size_from_text,
                 extract_floor_from_text,
                 extract_property_type_from_text,
@@ -182,54 +192,79 @@ class Yad2Scraper(BaseScraper):
             rooms         = extract_rooms_from_text(raw_text)
             size_sqm      = extract_size_from_text(raw_text)
             floor         = extract_floor_from_text(raw_text)
-            amenities     = extract_amenities_from_text(raw_text)
             property_type = extract_property_type_from_text(raw_text)
             neighborhood  = extract_neighborhood_from_yad2_text(raw_text)
             parking_count = extract_parking_count_from_text(raw_text)
+            # Amenities intentionally NOT extracted from card text — card text never
+            # contains amenity keywords. They are set to None (unknown) here and
+            # populated by enrich_from_detail_page() for new listings.
 
-            # Location — try selector first, fall back to first non-numeric line
-            location = self._first_text(
-                element,
-                ['[class*="city"]', '[class*="location"]', '[class*="address"]',
-                 '[data-testid="city"]', '[data-testid="address"]'],
-            )
-            if not location:
-                for line in raw_text.split('\n'):
-                    line = line.strip()
-                    if line and not any(c.isdigit() for c in line[:3]) and len(line) > 3:
-                        location = line
-                        break
+            # Location: skip region/district labels (מחוז) and overly long lines
+            location = None
+            for line in raw_text.split('\n'):
+                line = line.strip()
+                if (line and 3 < len(line) < 60
+                        and 'מחוז' not in line
+                        and not line.startswith('₪')
+                        and not any(c.isdigit() for c in line[:2])):
+                    location = line
+                    break
 
-            # Title — first meaningful line
             title = raw_text.split('\n')[0][:120].strip()
 
-            # Image
             image_url = None
-            img = element.query_selector('img')
-            if img:
-                image_url = img.get_attribute('src')
+            container = element if not is_link else None
+            if container:
+                img = container.query_selector('img[src]')
+                if img:
+                    src = img.get_attribute('src') or ''
+                    if src and not src.startswith('data:'):
+                        image_url = src
 
             return {
-                'listing_id':   listing_id,
-                'source':       'yad2',
-                'url':          url,
-                'title':        title,
-                'price':        price,
-                'rooms':        rooms,
-                'floor':        floor,
-                'size_sqm':     size_sqm,
-                'location':     location,
-                'neighborhood': neighborhood,
+                'listing_id':    listing_id,
+                'source':        'yad2',
+                'url':           url,
+                'title':         title,
+                'price':         price,
+                'rooms':         rooms,
+                'floor':         floor,
+                'size_sqm':      size_sqm,
+                'location':      location,
+                'neighborhood':  neighborhood,
                 'property_type': property_type,
                 'parking_count': parking_count,
-                'image_url':    image_url,
-                'raw_text':     raw_text,
-                **amenities,
+                'image_url':     image_url,
+                'raw_text':      raw_text,
+                # amenity fields absent → formatter skips them (no ❌ spam)
             }
 
         except Exception as e:
             logger.error(f"Error extracting Yad2 listing: {e}")
             return None
+
+    def _get_container_text(self, link_element) -> str:
+        """Walk up from a link element to the nearest card container for full text."""
+        try:
+            text = link_element.evaluate("""link => {
+                let el = link.parentElement;
+                for (let i = 0; i < 8; i++) {
+                    if (!el) break;
+                    const tid = el.dataset && el.dataset.testid;
+                    if (tid && (tid.includes('item') || tid.includes('platinum') || tid.includes('agency'))) {
+                        return el.innerText;
+                    }
+                    const cls = typeof el.className === 'string' ? el.className : '';
+                    if (cls.includes('property-ad-card') || cls.includes('item-card')) {
+                        return el.innerText;
+                    }
+                    el = el.parentElement;
+                }
+                return link.innerText;
+            }""")
+            return (text or '').strip()
+        except Exception:
+            return ''
 
     def enrich_from_detail_page(self, listing: dict) -> None:
         """

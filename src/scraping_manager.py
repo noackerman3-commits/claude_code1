@@ -168,12 +168,18 @@ class ScrapingManager:
     def _process(self, listings: list, result: ScrapingResult) -> int:
         """Filter, deduplicate, and save listings. Returns count of new ones."""
         new_count = 0
+        seen_this_batch: set = set()
         for listing in listings:
+            lid = listing.get('listing_id')
+            if not lid or lid in seen_this_batch:
+                continue
+            seen_this_batch.add(lid)
+
             passes, reason = self.filter.matches(listing)
             if not passes:
-                logger.debug(f"Filtered {listing.get('listing_id')}: {reason}")
+                logger.debug(f"Filtered {lid}: {reason}")
                 continue
-            if self.db.listing_exists(listing['listing_id'], listing['source']):
+            if self.db.listing_exists(lid, listing['source']):
                 continue
             self.db.add_listing(listing)
             result.new_listings.append(listing)
