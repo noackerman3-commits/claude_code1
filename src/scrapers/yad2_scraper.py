@@ -114,17 +114,30 @@ class Yad2Scraper(BaseScraper):
         return self._default_base_url
 
     def _find_listing_elements(self):
-        # 1. Cards that contain a direct listing link — most reliable
+        # 1. Best: actual search results inside the feed-list container.
+        #    Yad2 also renders a "recommendations" section above the real results;
+        #    scoping to feed-list excludes those completely.
         try:
-            all_cards = self.page.query_selector_all('[class*="Card"],[class*="card"]')
-            listing_cards = [c for c in all_cards if c.query_selector('a[href*="/item/"]')]
+            feed = self.page.query_selector('[data-testid="feed-list"]')
+            if feed:
+                cards = feed.query_selector_all('[class*="property-ad-card"]')
+                if cards:
+                    logger.debug(f"Yad2: {len(cards)} cards inside feed-list")
+                    return cards
+        except Exception:
+            pass
+
+        # 2. Page-wide property-ad-card elements that contain a listing link.
+        try:
+            cards = self.page.query_selector_all('[class*="property-ad-card"]')
+            listing_cards = [c for c in cards if c.query_selector('a[href*="/item/"]')]
             if listing_cards:
-                logger.debug(f"Yad2: {len(listing_cards)} listing cards found via [class*=Card]")
+                logger.debug(f"Yad2: {len(listing_cards)} property-ad-cards with /item/ links")
                 return listing_cards
         except Exception:
             pass
 
-        # 2. Feed item selectors (older Yad2 HTML)
+        # 3. Legacy fallback selectors (older Yad2 HTML)
         for selector in [
             '[class*="FeedItem"]', '[class*="feeditem"]', '[class*="feed-item"]',
             '[class*="feedItem"]', '.feeditem', '[data-testid="feed-item"]', 'article',
