@@ -1,0 +1,75 @@
+# ============================================================
+# Rental Agent — Routine config (committed to git, no secrets)
+# Secrets (bot_token, chat_id) come from Routine env variables:
+#   RENTAL_BOT_TOKEN   your Telegram bot token
+#   RENTAL_CHAT_ID     your Telegram chat ID
+# ============================================================
+
+search_parameters:
+  price_range:
+    min: 6000
+    max: 11000
+  min_rooms: 3.0
+  locations:
+    - Tel Aviv
+    - תל אביב
+    - Ramat Gan
+    - רמת גן
+    - Herzliya
+    - הרצליה
+    - Ra'anana
+    - רעננה
+    - Kfar Saba
+    - כפר סבא
+    - Hod HaSharon
+    - הוד השרון
+    - Tel Mond
+    - תל מונד
+    - Shoham
+    - שוהם
+    - Beit Arye
+    - בית אריה
+    - Sharon
+    - השרון
+  must_have_keywords: []
+  exclude_keywords:
+    - דירת חלוקה
+    - shared
+
+sources:
+  yad2:
+    # Yad2 blocks cloud IPs — these searches will be skipped gracefully.
+    # Run bot_listener.py locally for full Yad2 support.
+    enabled: false
+    searches:
+      - name: "Center & Sharon — 3-4 rooms 6000-11000"
+        url: "https://www.yad2.co.il/realestate/rent/center-and-sharon?minPrice=6000&maxPrice=11000&minRooms=3&maxRooms=4&multiNeighborhood=344%2C808%2C1501"
+      - name: "Kfar Saba area — 3-4 rooms 6500-10000"
+        url: "https://www.yad2.co.il/realestate/rent/center-and-sharon?minPrice=6500&maxPrice=10000&minRooms=3&maxRooms=4&area=98&city=1304"
+
+  facebook:
+    enabled: true
+    groups:
+      - name: Group1
+        url: https://www.facebook.com/groups/1663070923962851/
+      - name: Group2
+        url: https://www.facebook.com/groups/1617402861868870
+      - name: Group3
+        url: https://www.facebook.com/groups/3697622177026947
+
+telegram:
+  bot_token: ""   # overridden by RENTAL_BOT_TOKEN env var
+  chat_id: ""     # overridden by RENTAL_CHAT_ID env var
+
+scraping:
+  scroll_count: 10
+  delay_min: 2
+  delay_max: 5
+  enrich_details: false   # detail-page enrichment not useful without Yad2
+
+browser:
+  headless: true
+  persistent_context_path: ./browser_data
+
+database:
+  path: ./data/listings.db

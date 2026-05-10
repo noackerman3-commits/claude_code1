@@ -15,7 +15,15 @@ class ConfigManager:
         self.config = None
 
     def load_config(self) -> Dict[str, Any]:
-        """Load configuration from YAML file."""
+        """
+        Load configuration from YAML file, then overlay environment variables.
+
+        Environment variable overrides (useful for CI / cloud Routines):
+          RENTAL_BOT_TOKEN  → telegram.bot_token
+          RENTAL_CHAT_ID    → telegram.chat_id
+          RENTAL_DB_PATH    → database.path
+          RENTAL_HEADLESS   → browser.headless  (any value → true)
+        """
         try:
             if not os.path.exists(self.config_path):
                 logger.error(f"Configuration file not found: {self.config_path}")
@@ -24,11 +32,27 @@ class ConfigManager:
             with open(self.config_path, 'r', encoding='utf-8') as f:
                 self.config = yaml.safe_load(f)
 
+            self._apply_env_overrides()
             logger.info("Configuration loaded successfully")
             return self.config
         except Exception as e:
             logger.error(f"Error loading configuration: {e}")
             raise
+
+    def _apply_env_overrides(self):
+        """Overlay environment-variable secrets on top of the YAML config."""
+        tg = self.config.setdefault('telegram', {})
+        if os.environ.get('RENTAL_BOT_TOKEN'):
+            tg['bot_token'] = os.environ['RENTAL_BOT_TOKEN']
+        if os.environ.get('RENTAL_CHAT_ID'):
+            tg['chat_id'] = os.environ['RENTAL_CHAT_ID']
+
+        db = self.config.setdefault('database', {})
+        if os.environ.get('RENTAL_DB_PATH'):
+            db['path'] = os.environ['RENTAL_DB_PATH']
+
+        if os.environ.get('RENTAL_HEADLESS'):
+            self.config.setdefault('browser', {})['headless'] = True
 
     def save_config(self, config: Dict[str, Any]):
         """Save configuration to YAML file."""
