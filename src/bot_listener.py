@@ -69,7 +69,8 @@ class ListingBot:
         await update.message.reply_text(
             "🏠 *Rental Agent Bot*\n\n"
             "Commands:\n"
-            "/find\\_homes — scan all sources NOW\n"
+            "/find\\_homes — scan Yad2 now (run from home)\n"
+            "/find\\_all — scan Yad2 + Facebook now\n"
             "/stats — database statistics\n"
             "/parameter — view or change search settings\n"
             "/help — usage guide",
@@ -79,6 +80,10 @@ class ListingBot:
     async def help_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             "📖 *Help*\n\n"
+            "*Scans:*\n"
+            "`/find_homes` — Yad2 only (run from home IP)\n"
+            "`/find_all` — Yad2 + Facebook\n"
+            "Facebook runs automatically via scheduler.\n\n"
             "*Search settings:*\n"
             "`/parameter view`\n"
             "`/parameter price 3000-7000`\n"
@@ -87,9 +92,7 @@ class ListingBot:
             "`/parameter must מעלית`\n"
             "`/parameter exclude שותפים`\n\n"
             "*Manual listing:*\n"
-            "Send any Yad2 or Facebook URL directly — I'll save it.\n\n"
-            "*Start a scan:*\n"
-            "`/find_homes`",
+            "Send any Yad2 or Facebook URL directly — I'll save it.",
             parse_mode='Markdown',
         )
 
@@ -110,28 +113,41 @@ class ListingBot:
         )
 
     async def find_homes_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Yad2 on-demand scan (home IP required)."""
         if not self._is_authorized(update):
             await update.message.reply_text("⛔ Unauthorized")
             return
+        await self._run_scan(update, sources='yad2')
 
+    async def find_all_command(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
+        """Scan all sources at once (Yad2 + Facebook)."""
+        if not self._is_authorized(update):
+            await update.message.reply_text("⛔ Unauthorized")
+            return
+        await self._run_scan(update, sources=None)
+
+    async def _run_scan(self, update: Update, sources):
         # Reload config so /parameter changes are picked up
         self.config = self.config_manager.load_config()
 
-        sources = self.config.get('sources', {})
-        n_yad2 = len(sources.get('yad2', {}).get('searches', []))
-        n_fb = len(sources.get('facebook', {}).get('groups', []))
+        cfg_sources = self.config.get('sources', {})
+        n_yad2 = len(cfg_sources.get('yad2', {}).get('searches', []))
+        n_fb   = len(cfg_sources.get('facebook', {}).get('groups', []))
 
-        status_msg = await update.message.reply_text(
-            f"🔍 Starting scan…\n"
-            f"Yad2: {n_yad2} searches | Facebook: {n_fb} groups",
-        )
+        if sources == 'yad2':
+            label = f"🏠 Yad2: {n_yad2} search(es)"
+        elif sources == 'facebook':
+            label = f"📘 Facebook: {n_fb} group(s)"
+        else:
+            label = f"🏠 Yad2: {n_yad2} | 📘 Facebook: {n_fb}"
+
+        status_msg = await update.message.reply_text(f"🔍 Starting scan…\n{label}")
 
         loop = asyncio.get_event_loop()
         progress_lines: list[str] = []
 
         async def edit_status(line: str):
             progress_lines.append(line)
-            # Keep only the last 12 lines so the message stays readable
             snippet = '\n'.join(progress_lines[-12:])
             try:
                 await status_msg.edit_text(snippet)
@@ -141,17 +157,18 @@ class ListingBot:
         def sync_progress(msg: str):
             asyncio.run_coroutine_threadsafe(edit_status(msg), loop)
 
-        config_snapshot = self.config  # capture before running in thread
+        config_snapshot = self.config
+        sources_snapshot = sources
 
         def run_scraping():
             from scraping_manager import ScrapingManager
             manager = ScrapingManager(config_snapshot)
-            return manager.run(progress_callback=sync_progress)
+            return manager.run(progress_callback=sync_progress, sources=sources_snapshot)
 
         try:
             result = await loop.run_in_executor(self._executor, run_scraping)
         except Exception as e:
-            logger.error(f"/find_homes error: {e}", exc_info=True)
+            logger.error(f"Scan error: {e}", exc_info=True)
             await update.message.reply_text(f"❌ Scan failed:\n{e}")
             return
 
@@ -395,6 +412,7 @@ class ListingBot:
         app.add_handler(CommandHandler("start",       self.start_command))
         app.add_handler(CommandHandler("help",        self.help_command))
         app.add_handler(CommandHandler("find_homes",  self.find_homes_command))
+        app.add_handler(CommandHandler("find_all",    self.find_all_command))
         app.add_handler(CommandHandler("stats",       self.stats_command))
         app.add_handler(CommandHandler("parameter",   self.parameter_command))
         app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, self.handle_message))

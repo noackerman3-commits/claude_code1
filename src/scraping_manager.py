@@ -51,13 +51,17 @@ class ScrapingManager:
     # Public API
     # ------------------------------------------------------------------
 
-    def run(self, progress_callback: Optional[Callable[[str], None]] = None) -> ScrapingResult:
+    def run(self, progress_callback: Optional[Callable[[str], None]] = None,
+            sources: Optional[str] = None) -> ScrapingResult:
         """
-        Run all configured scrapers.
-        progress_callback receives plain-text status strings during the run.
+        Run configured scrapers.
+
+        sources: None → run everything
+                 'yad2'     → Yad2 only  (on-demand via Telegram)
+                 'facebook' → Facebook only  (scheduled)
         """
         result = ScrapingResult()
-        sources = self.config.get('sources', {})
+        cfg_sources = self.config.get('sources', {})
 
         def progress(msg: str):
             logger.info(msg)
@@ -67,20 +71,22 @@ class ScrapingManager:
                 except Exception as e:
                     logger.debug(f"progress_callback error: {e}")
 
+        run_yad2 = sources in (None, 'yad2')
+        run_fb   = sources in (None, 'facebook')
+
         # --- Yad2 ---
-        yad2_cfg = sources.get('yad2', {})
-        if yad2_cfg.get('enabled', True):
+        yad2_cfg = cfg_sources.get('yad2', {})
+        if run_yad2 and yad2_cfg.get('enabled', True):
             searches = yad2_cfg.get('searches', [])
             if not searches:
-                # Backward-compat: single base_url
                 base_url = yad2_cfg.get('base_url', 'https://www.yad2.co.il/realestate/rent')
                 searches = [{'name': 'Yad2 Default', 'url': base_url}]
             progress(f"🏠 Yad2: {len(searches)} search(es) queued")
             self._run_yad2(searches, result, progress)
 
         # --- Facebook ---
-        fb_cfg = sources.get('facebook', {})
-        if fb_cfg.get('enabled', True):
+        fb_cfg = cfg_sources.get('facebook', {})
+        if run_fb and fb_cfg.get('enabled', True):
             groups = fb_cfg.get('groups', [])
             progress(f"📘 Facebook: {len(groups)} group(s) queued")
             self._run_facebook(groups, result, progress)

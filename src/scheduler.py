@@ -34,7 +34,7 @@ def run_scraping_job():
 
         from scraping_manager import ScrapingManager
         manager = ScrapingManager(config)
-        result = manager.run()
+        result = manager.run(sources='facebook')
 
         if result.new_listings:
             manager.notifier.send_message(_build_summary(result))
