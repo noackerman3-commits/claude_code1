@@ -43,14 +43,14 @@ class Yad2Scraper(BaseScraper):
         return self.base_url
 
     def scrape(self) -> List[Dict]:
-        """Scrape Yad2 listings."""
+        """Scrape Yad2 listings using the pre-filtered URL from config."""
         listings = []
 
         try:
             if not self.page:
                 self.initialize_browser()
 
-            search_url = self.build_search_url()
+            search_url = self.base_url
             logger.info(f"Navigating to Yad2: {search_url}")
 
             self.page.goto(search_url, wait_until='networkidle', timeout=30000)
