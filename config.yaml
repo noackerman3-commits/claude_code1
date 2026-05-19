@@ -1,8 +1,12 @@
 browser:
-  headless: false
+  headless: true
   persistent_context_path: ./browser_data
 database:
   path: ./data/listings.db
+schedule:
+  hour: 14
+  minute: 0
+  timezone: Asia/Jerusalem
 scraping:
   delay_max: 5
   delay_min: 2

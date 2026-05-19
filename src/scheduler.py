@@ -1,6 +1,6 @@
 """
 Scheduler for automated apartment scraping.
-Runs at 10:00 AM and 6:00 PM Israel time daily.
+Runs daily at 14:00 (2:00 PM) Jerusalem time.
 """
 import sys
 import os
@@ -66,19 +66,31 @@ def filter_listing(listing: dict, search_params: dict) -> bool:
     return True
 
 
-def send_aggregated_notification(notifier: TelegramNotifier, new_listings: list):
-    """Send a single notification with all new listings."""
+def send_aggregated_notification(notifier: TelegramNotifier, new_listings: list, total_scraped: int):
+    """Send a scan summary notification via Telegram."""
+
+    scan_time = datetime.now().strftime('%d/%m/%Y %H:%M')
 
     if not new_listings:
-        logger.info("No new listings to notify")
+        message = (
+            f"🔍 *Daily Rental Scan Complete*\n"
+            f"⏰ {scan_time}\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📋 Scanned: {total_scraped} listings\n"
+            f"✅ No new listings found"
+        )
+        notifier.send_message(message)
+        logger.info("Sent scan-complete notification (no new listings)")
         return
 
-    # Build summary message
-    message = f"🏠 *New Apartments Found: {len(new_listings)}*\n"
-    message += f"⏰ {datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
-    message += "━━━━━━━━━━━━━━━━━━━━━\n\n"
+    message = (
+        f"🏠 *New Apartments Found: {len(new_listings)}*\n"
+        f"⏰ {scan_time}\n"
+        f"📋 Total scanned: {total_scraped}\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n\n"
+    )
 
-    for i, listing in enumerate(new_listings[:10], 1):  # Limit to 10 per message
+    for i, listing in enumerate(new_listings[:10], 1):
         message += f"*{i}. {listing.get('title', 'Apartment')[:50]}*\n"
 
         if listing.get('location'):
@@ -98,7 +110,6 @@ def send_aggregated_notification(notifier: TelegramNotifier, new_listings: list)
     if len(new_listings) > 10:
         message += f"\n_+ {len(new_listings) - 10} more listings in database_"
 
-    # Send notification
     notifier.send_message(message)
     logger.info(f"Sent aggregated notification with {len(new_listings)} listings")
 
@@ -148,15 +159,12 @@ def run_scraping_job():
                 total_scraped += len(yad2_listings)
 
                 for listing in yad2_listings:
-                    # Filter listing
                     if not filter_listing(listing, search_params):
                         continue
 
-                    # Check if already exists
                     if db.listing_exists(listing['listing_id'], listing['source']):
                         continue
 
-                    # Add to new listings and save to database
                     new_listings.append(listing)
                     db.add_listing(listing)
 
@@ -177,15 +185,12 @@ def run_scraping_job():
                 fb_new_count = len(new_listings)
 
                 for listing in fb_listings:
-                    # Filter listing
                     if not filter_listing(listing, search_params):
                         continue
 
-                    # Check if already exists
                     if db.listing_exists(listing['listing_id'], listing['source']):
                         continue
 
-                    # Add to new listings and save to database
                     new_listings.append(listing)
                     db.add_listing(listing)
 
@@ -195,8 +200,8 @@ def run_scraping_job():
             except Exception as e:
                 logger.error(f"Error in Facebook scraper: {e}")
 
-        # Send aggregated notification
-        send_aggregated_notification(notifier, new_listings)
+        # Send aggregated notification (always — so user knows the scan ran)
+        send_aggregated_notification(notifier, new_listings, total_scraped)
 
         # Summary
         logger.info("=" * 60)
@@ -216,42 +221,38 @@ def main():
     # Setup logging
     setup_logging()
 
-    # Define Israel timezone
-    israel_tz = pytz.timezone('Asia/Jerusalem')
+    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.yaml')
+    config_manager = ConfigManager(config_path)
+    config = config_manager.load_config()
+
+    schedule_cfg = config.get('schedule', {})
+    scan_hour = schedule_cfg.get('hour', 14)
+    scan_minute = schedule_cfg.get('minute', 0)
+    tz_name = schedule_cfg.get('timezone', 'Asia/Jerusalem')
+
+    israel_tz = pytz.timezone(tz_name)
 
     logger.info("=" * 60)
     logger.info("Rental Agent Scheduler Starting")
     logger.info("=" * 60)
-    logger.info(f"Timezone: {israel_tz}")
-    logger.info("Schedule: 10:00 AM and 6:00 PM daily")
+    logger.info(f"Timezone: {tz_name}")
+    logger.info(f"Schedule: {scan_hour:02d}:{scan_minute:02d} daily")
     logger.info("=" * 60)
 
-    # Create scheduler
     scheduler = BlockingScheduler(timezone=israel_tz)
 
-    # Add jobs for 10:00 AM and 6:00 PM
     scheduler.add_job(
         run_scraping_job,
-        CronTrigger(hour=10, minute=0, timezone=israel_tz),
-        id='morning_scrape',
-        name='Morning Scrape (10:00 AM)',
+        CronTrigger(hour=scan_hour, minute=scan_minute, timezone=israel_tz),
+        id='daily_scrape',
+        name=f'Daily Scrape ({scan_hour:02d}:{scan_minute:02d})',
         replace_existing=True
     )
 
-    scheduler.add_job(
-        run_scraping_job,
-        CronTrigger(hour=18, minute=0, timezone=israel_tz),
-        id='evening_scrape',
-        name='Evening Scrape (6:00 PM)',
-        replace_existing=True
-    )
-
-    # Log next run times
     jobs = scheduler.get_jobs()
     logger.info("\nScheduled jobs:")
     for job in jobs:
-        next_run = job.next_run_time
-        logger.info(f"  - {job.name}: Next run at {next_run}")
+        logger.info(f"  - {job.name}: Next run at {job.next_run_time}")
 
     logger.info("\n" + "=" * 60)
     logger.info("Scheduler is running. Press Ctrl+C to stop.")
