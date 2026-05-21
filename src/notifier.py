@@ -90,6 +90,47 @@ class TelegramNotifier:
             logger.error(f"Error sending photo: {e}")
             return False
 
+    def send_scan_summary(self, new_listings: list, total_scraped: int, total_in_db: int) -> bool:
+        """Send a scan result summary — always fires, even with 0 new listings."""
+        from datetime import datetime
+        timestamp = datetime.now().strftime('%d/%m/%Y %H:%M')
+
+        if not new_listings:
+            message = (
+                f"🔍 *Daily Scan Complete*\n"
+                f"⏰ {timestamp}\n"
+                f"━━━━━━━━━━━━━━━━━━━━━\n"
+                f"✅ No new listings found\n"
+                f"📊 Scraped: {total_scraped} | DB total: {total_in_db}"
+            )
+            return self.send_message(message)
+
+        # Header
+        message = (
+            f"🏠 *New Apartments Found: {len(new_listings)}*\n"
+            f"⏰ {timestamp}\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n\n"
+        )
+
+        for i, listing in enumerate(new_listings[:10], 1):
+            message += f"*{i}. {listing.get('title', 'Apartment')[:50]}*\n"
+            if listing.get('location'):
+                message += f"📍 {listing['location']}\n"
+            if listing.get('price'):
+                message += f"💰 ₪{listing['price']:,}\n"
+            if listing.get('rooms'):
+                message += f"🛏 {listing['rooms']} rooms\n"
+            if listing.get('url'):
+                message += f"🔗 [View Listing]({listing['url']})\n"
+            message += f"_Source: {listing.get('source', 'Unknown')}_\n\n"
+
+        if len(new_listings) > 10:
+            message += f"_+ {len(new_listings) - 10} more in database_\n\n"
+
+        message += f"📊 Scraped: {total_scraped} | DB total: {total_in_db}"
+
+        return self.send_message(message)
+
     def send_message(self, text: str) -> bool:
         """Send text-only message."""
         try:
