@@ -1,0 +1,56 @@
+name: Daily Rental Scan
+
+on:
+  schedule:
+    # 14:00 IDT (UTC+3, April–October Israel summer time)
+    # Change to '0 12 * * *' in winter (14:00 IST = UTC+2)
+    - cron: '0 11 * * *'
+  workflow_dispatch:  # allow manual trigger from GitHub UI
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright browser
+        run: |
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Restore listings database
+        uses: actions/cache/restore@v4
+        with:
+          path: data/
+          key: listings-db-${{ github.run_id }}
+          restore-keys: |
+            listings-db-
+
+      - name: Run scraping job
+        run: python run_scrape_now.py
+
+      - name: Save listings database
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: data/
+          key: listings-db-${{ github.run_id }}
