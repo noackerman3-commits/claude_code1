@@ -50,7 +50,8 @@ class Yad2Scraper(BaseScraper):
             if not self.page:
                 self.initialize_browser()
 
-            search_url = self.build_search_url()
+            # Use the pre-filtered base_url directly (already contains area/price/rooms filters)
+            search_url = self.base_url
             logger.info(f"Navigating to Yad2: {search_url}")
 
             self.page.goto(search_url, wait_until='networkidle', timeout=30000)
