@@ -66,16 +66,26 @@ def filter_listing(listing: dict, search_params: dict) -> bool:
     return True
 
 
-def send_aggregated_notification(notifier: TelegramNotifier, new_listings: list):
-    """Send a single notification with all new listings."""
+def send_aggregated_notification(notifier: TelegramNotifier, new_listings: list, total_scraped: int):
+    """Send a single notification with scan results — always sent so you know the scan ran."""
+
+    timestamp = datetime.now().strftime('%d/%m/%Y %H:%M')
 
     if not new_listings:
-        logger.info("No new listings to notify")
+        message = (
+            f"🔍 *Daily Scan Complete*\n"
+            f"⏰ {timestamp}\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n"
+            f"📋 Scanned: {total_scraped} listings\n"
+            f"✅ No new listings found"
+        )
+        notifier.send_message(message)
+        logger.info("Sent no-results notification")
         return
 
-    # Build summary message
     message = f"🏠 *New Apartments Found: {len(new_listings)}*\n"
-    message += f"⏰ {datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
+    message += f"⏰ {timestamp}\n"
+    message += f"📋 Scanned: {total_scraped} listings\n"
     message += "━━━━━━━━━━━━━━━━━━━━━\n\n"
 
     for i, listing in enumerate(new_listings[:10], 1):  # Limit to 10 per message
@@ -98,7 +108,6 @@ def send_aggregated_notification(notifier: TelegramNotifier, new_listings: list)
     if len(new_listings) > 10:
         message += f"\n_+ {len(new_listings) - 10} more listings in database_"
 
-    # Send notification
     notifier.send_message(message)
     logger.info(f"Sent aggregated notification with {len(new_listings)} listings")
 
@@ -195,8 +204,8 @@ def run_scraping_job():
             except Exception as e:
                 logger.error(f"Error in Facebook scraper: {e}")
 
-        # Send aggregated notification
-        send_aggregated_notification(notifier, new_listings)
+        # Send aggregated notification (always sent — confirms scan ran)
+        send_aggregated_notification(notifier, new_listings, total_scraped)
 
         # Summary
         logger.info("=" * 60)
@@ -223,26 +232,18 @@ def main():
     logger.info("Rental Agent Scheduler Starting")
     logger.info("=" * 60)
     logger.info(f"Timezone: {israel_tz}")
-    logger.info("Schedule: 10:00 AM and 6:00 PM daily")
+    logger.info("Schedule: 14:00 daily (Jerusalem time)")
     logger.info("=" * 60)
 
     # Create scheduler
     scheduler = BlockingScheduler(timezone=israel_tz)
 
-    # Add jobs for 10:00 AM and 6:00 PM
+    # Single daily job at 14:00 Jerusalem time
     scheduler.add_job(
         run_scraping_job,
-        CronTrigger(hour=10, minute=0, timezone=israel_tz),
-        id='morning_scrape',
-        name='Morning Scrape (10:00 AM)',
-        replace_existing=True
-    )
-
-    scheduler.add_job(
-        run_scraping_job,
-        CronTrigger(hour=18, minute=0, timezone=israel_tz),
-        id='evening_scrape',
-        name='Evening Scrape (6:00 PM)',
+        CronTrigger(hour=14, minute=0, timezone=israel_tz),
+        id='daily_scrape',
+        name='Daily Scrape (14:00)',
         replace_existing=True
     )
 
