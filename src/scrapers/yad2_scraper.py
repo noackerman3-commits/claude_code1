@@ -3,7 +3,6 @@ Yad2 scraper for rental listings.
 """
 import logging
 from typing import List, Dict, Optional
-from urllib.parse import urlencode
 from .base_scraper import BaseScraper
 import hashlib
 
@@ -16,32 +15,6 @@ class Yad2Scraper(BaseScraper):
         self.base_url = config.get('sources', {}).get('yad2', {}).get('base_url',
             'https://www.yad2.co.il/realestate/rent')
 
-    def build_search_url(self) -> str:
-        """Build search URL from config parameters."""
-        search_params = self.config.get('search_parameters', {})
-        price_range = search_params.get('price_range', {})
-
-        # Yad2 uses specific query parameters
-        params = {}
-
-        if price_range.get('min'):
-            params['priceOnly'] = '1'
-            params['price'] = f"{price_range['min']}-{price_range.get('max', 99999)}"
-
-        if search_params.get('min_rooms'):
-            params['rooms'] = f"{search_params['min_rooms']}-99"
-
-        # Add locations if specified
-        locations = search_params.get('locations', [])
-        if locations:
-            # For simplicity, we'll just use the base URL and filter by location text
-            # Full implementation would map locations to Yad2's city codes
-            pass
-
-        if params:
-            return f"{self.base_url}?{urlencode(params)}"
-        return self.base_url
-
     def scrape(self) -> List[Dict]:
         """Scrape Yad2 listings."""
         listings = []
@@ -50,7 +23,8 @@ class Yad2Scraper(BaseScraper):
             if not self.page:
                 self.initialize_browser()
 
-            search_url = self.build_search_url()
+            # Use the pre-configured URL directly — it already includes all filters
+            search_url = self.base_url
             logger.info(f"Navigating to Yad2: {search_url}")
 
             self.page.goto(search_url, wait_until='networkidle', timeout=30000)
