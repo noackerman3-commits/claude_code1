@@ -2,6 +2,7 @@
 SQLite database operations for managing rental listings.
 """
 import sqlite3
+import os
 from datetime import datetime
 from typing import Dict, Optional
 import logging
@@ -16,6 +17,7 @@ class Database:
     def init_db(self):
         """Create database and tables if they don't exist."""
         try:
+            os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
 
