@@ -8,7 +8,7 @@ env/
 venv/
 ENV/
 
-# Sensitive data
+# Sensitive data — config.example.yaml is safe to commit (no real credentials)
 config.yaml
 *.db
 *.sqlite

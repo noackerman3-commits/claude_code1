@@ -1,0 +1,64 @@
+name: Daily Rental Scan
+
+on:
+  schedule:
+    # 11:00 UTC = 14:00 Jerusalem time (UTC+3 DST, March–October)
+    # In winter (UTC+2) this fires at 13:00 local — adjust to 12:00 UTC if needed
+    - cron: '0 11 * * *'
+  workflow_dispatch:  # Allow manual trigger from GitHub Actions UI
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: pip-${{ hashFiles('requirements.txt') }}
+          restore-keys: pip-
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright browser
+        run: playwright install --with-deps chromium
+
+      - name: Set up config from template
+        run: cp config.example.yaml config.yaml
+
+      - name: Create required directories
+        run: mkdir -p data logs browser_data
+
+      - name: Restore listings database
+        uses: actions/cache@v4
+        with:
+          path: data/listings.db
+          # New key each run so the updated DB is saved; restore-keys picks up the last run's DB
+          key: rental-db-${{ github.run_number }}
+          restore-keys: rental-db-
+
+      - name: Run rental scan
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          CI: 'true'
+        run: python src/main.py
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-logs
+          path: logs/
+          retention-days: 7

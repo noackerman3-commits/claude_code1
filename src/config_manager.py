@@ -24,11 +24,30 @@ class ConfigManager:
             with open(self.config_path, 'r', encoding='utf-8') as f:
                 self.config = yaml.safe_load(f)
 
+            self._apply_env_overrides()
             logger.info("Configuration loaded successfully")
             return self.config
         except Exception as e:
             logger.error(f"Error loading configuration: {e}")
             raise
+
+    def _apply_env_overrides(self):
+        """Override sensitive values and CI-specific settings from environment variables."""
+        if 'telegram' not in self.config:
+            self.config['telegram'] = {}
+
+        bot_token = os.environ.get('TELEGRAM_BOT_TOKEN')
+        chat_id = os.environ.get('TELEGRAM_CHAT_ID')
+        if bot_token:
+            self.config['telegram']['bot_token'] = bot_token
+        if chat_id:
+            self.config['telegram']['chat_id'] = chat_id
+
+        # Force headless mode in CI environments (GitHub Actions sets CI=true)
+        if os.environ.get('CI'):
+            if 'browser' not in self.config:
+                self.config['browser'] = {}
+            self.config['browser']['headless'] = True
 
     def save_config(self, config: Dict[str, Any]):
         """Save configuration to YAML file."""

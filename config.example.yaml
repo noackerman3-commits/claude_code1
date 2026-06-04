@@ -1,0 +1,44 @@
+browser:
+  headless: true
+  persistent_context_path: ./browser_data
+database:
+  path: ./data/listings.db
+scraping:
+  delay_max: 5
+  delay_min: 2
+  scroll_count: 10
+  user_agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML,
+    like Gecko) Chrome/120.0.0.0 Safari/537.36
+search_parameters:
+  exclude_keywords:
+  - דירת חלוקה
+  - shared
+  locations:
+  - Tel Aviv
+  - Ramat Gan
+  - Kfar Saba, Herzelyia, Raanana, Shoham, Beit Aryieh, North District
+  - רעננה, כפר סבא, הוד השרון, בית אריה, עמק יזרעאל, השרון, תל מונד, הרצליה, בבלי,
+    שוהם
+  min_rooms: 3.0
+  must_have_keywords:
+  - מעלית
+  - מרפסת
+  price_range:
+    max: 11000
+    min: 6000
+sources:
+  facebook:
+    enabled: false
+    groups:
+    - name: Group1
+      url: https://www.facebook.com/groups/1663070923962851/
+    - name: Group2
+      url: https://www.facebook.com/groups/1617402861868870
+    - name: Group3
+      url: https://www.facebook.com/groups/3697622177026947
+  yad2:
+    base_url: https://www.yad2.co.il/realestate/rent/center-and-sharon?minPrice=6000&maxPrice=11000&minRooms=3&maxRooms=4&multiNeighborhood=344%2C808%2C1501
+    enabled: true
+telegram:
+  bot_token: YOUR_BOT_TOKEN
+  chat_id: YOUR_CHAT_ID
