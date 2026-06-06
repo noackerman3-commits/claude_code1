@@ -1,0 +1,75 @@
+name: Daily Rental Scan
+
+on:
+  schedule:
+    # 14:00 Jerusalem time = 11:00 UTC (summer, UTC+3)
+    # Adjust to 12:00 UTC in winter (UTC+2) if needed
+    - cron: '0 11 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          playwright install chromium --with-deps
+
+      - name: Create required directories
+        run: mkdir -p data logs browser_data
+
+      - name: Write config with secrets
+        run: |
+          python - <<'EOF'
+          import yaml, os
+
+          with open('config.yaml', 'r') as f:
+              config = yaml.safe_load(f)
+
+          bot_token = os.environ.get('TELEGRAM_BOT_TOKEN')
+          chat_id = os.environ.get('TELEGRAM_CHAT_ID')
+
+          if bot_token:
+              config['telegram']['bot_token'] = bot_token
+          if chat_id:
+              config['telegram']['chat_id'] = chat_id
+
+          with open('config.yaml', 'w') as f:
+              yaml.dump(config, f, allow_unicode=True)
+          EOF
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+
+      - name: Restore listings database cache
+        uses: actions/cache@v4
+        with:
+          path: data/listings.db
+          key: listings-db-${{ github.run_number }}
+          restore-keys: |
+            listings-db-
+
+      - name: Run rental scan
+        run: python src/main.py
+        env:
+          PYTHONUNBUFFERED: "1"
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-logs-${{ github.run_number }}
+          path: logs/
+          retention-days: 7
