@@ -1,5 +1,5 @@
 browser:
-  headless: false
+  headless: true
   persistent_context_path: ./browser_data
 database:
   path: ./data/listings.db
@@ -26,6 +26,23 @@ search_parameters:
   price_range:
     max: 11000
     min: 6000
+scan_urls:
+- enabled: true
+  name: Yad2 - Center & Sharon Rentals
+  source: yad2
+  url: https://www.yad2.co.il/realestate/rent/center-and-sharon?minPrice=6000&maxPrice=11000&minRooms=3&maxRooms=4&multiNeighborhood=344%2C808%2C1501
+- enabled: false
+  name: Facebook Group 1
+  source: facebook
+  url: https://www.facebook.com/groups/1663070923962851/
+- enabled: false
+  name: Facebook Group 2
+  source: facebook
+  url: https://www.facebook.com/groups/1617402861868870
+- enabled: false
+  name: Facebook Group 3
+  source: facebook
+  url: https://www.facebook.com/groups/3697622177026947
 sources:
   facebook:
     enabled: false

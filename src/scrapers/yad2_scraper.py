@@ -42,15 +42,15 @@ class Yad2Scraper(BaseScraper):
             return f"{self.base_url}?{urlencode(params)}"
         return self.base_url
 
-    def scrape(self) -> List[Dict]:
-        """Scrape Yad2 listings."""
+    def scrape(self, url: str = None) -> List[Dict]:
+        """Scrape Yad2 listings. Pass url to scan a pre-filtered URL directly."""
         listings = []
 
         try:
             if not self.page:
                 self.initialize_browser()
 
-            search_url = self.build_search_url()
+            search_url = url if url else self.build_search_url()
             logger.info(f"Navigating to Yad2: {search_url}")
 
             self.page.goto(search_url, wait_until='networkidle', timeout=30000)

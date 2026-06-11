@@ -1,6 +1,6 @@
 """
-Scheduler for automated apartment scraping.
-Runs at 10:00 AM and 6:00 PM Israel time daily.
+Scheduler for automated rental URL scanning.
+Runs daily at 14:00 Jerusalem time.
 """
 import sys
 import os
@@ -9,7 +9,6 @@ from apscheduler.schedulers.blocking import BlockingScheduler
 from apscheduler.triggers.cron import CronTrigger
 import pytz
 
-# Add src directory to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from config_manager import ConfigManager
@@ -17,248 +16,173 @@ from database import Database
 from scrapers.yad2_scraper import Yad2Scraper
 from scrapers.facebook_scraper import FacebookScraper
 from notifier import TelegramNotifier
-from utils import setup_logging, matches_keywords, excludes_keywords
+from utils import setup_logging
 import logging
 
 logger = logging.getLogger(__name__)
 
 
-def filter_listing(listing: dict, search_params: dict) -> bool:
-    """Check if listing matches search criteria."""
-
-    # Check price range
-    price_range = search_params.get('price_range', {})
-    if listing.get('price'):
-        min_price = price_range.get('min', 0)
-        max_price = price_range.get('max', 999999)
-
-        if not (min_price <= listing['price'] <= max_price):
-            return False
-
-    # Check minimum rooms
-    min_rooms = search_params.get('min_rooms')
-    if min_rooms and listing.get('rooms'):
-        if listing['rooms'] < min_rooms:
-            return False
-
-    # Check location if specified
-    locations = search_params.get('locations', [])
-    if locations and listing.get('location'):
-        location_match = any(
-            loc.lower() in listing['location'].lower()
-            for loc in locations
-        )
-        if not location_match:
-            return False
-
-    # Check must-have keywords
-    must_have = search_params.get('must_have_keywords', [])
-    full_text = listing.get('full_text', '') + ' ' + listing.get('title', '')
-
-    if must_have and not matches_keywords(full_text, must_have):
-        return False
-
-    # Check exclude keywords
-    exclude = search_params.get('exclude_keywords', [])
-    if exclude and excludes_keywords(full_text, exclude):
-        return False
-
-    return True
-
-
-def send_aggregated_notification(notifier: TelegramNotifier, new_listings: list):
-    """Send a single notification with all new listings."""
+def send_scan_notification(notifier: TelegramNotifier, new_listings: list, total_scraped: int):
+    """Send Telegram notification with daily scan results."""
+    israel_tz = pytz.timezone('Asia/Jerusalem')
+    now = datetime.now(israel_tz)
+    time_str = now.strftime('%d/%m/%Y %H:%M')
 
     if not new_listings:
-        logger.info("No new listings to notify")
+        message = (
+            f"🔍 *Daily Scan Complete*\n"
+            f"⏰ {time_str}\n"
+            f"📊 Scanned: {total_scraped} listings\n"
+            f"✅ No new listings found"
+        )
+        notifier.send_message(message)
+        logger.info("Sent scan notification: no new listings")
         return
 
-    # Build summary message
-    message = f"🏠 *New Apartments Found: {len(new_listings)}*\n"
-    message += f"⏰ {datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
-    message += "━━━━━━━━━━━━━━━━━━━━━\n\n"
+    message = (
+        f"🏠 *{len(new_listings)} New Listing{'s' if len(new_listings) > 1 else ''} Found!*\n"
+        f"⏰ {time_str}\n"
+        f"📊 Scanned: {total_scraped} total\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n\n"
+    )
 
-    for i, listing in enumerate(new_listings[:10], 1):  # Limit to 10 per message
+    for i, listing in enumerate(new_listings[:10], 1):
         message += f"*{i}. {listing.get('title', 'Apartment')[:50]}*\n"
-
         if listing.get('location'):
             message += f"📍 {listing['location']}\n"
-
         if listing.get('price'):
             message += f"💰 ₪{listing['price']:,}\n"
-
         if listing.get('rooms'):
             message += f"🛏 {listing['rooms']} rooms\n"
-
         if listing.get('url'):
             message += f"🔗 [View Listing]({listing['url']})\n"
-
         message += f"_Source: {listing.get('source', 'Unknown')}_\n\n"
 
     if len(new_listings) > 10:
-        message += f"\n_+ {len(new_listings) - 10} more listings in database_"
+        message += f"\n_+ {len(new_listings) - 10} more listings saved to database_"
 
-    # Send notification
     notifier.send_message(message)
-    logger.info(f"Sent aggregated notification with {len(new_listings)} listings")
+    logger.info(f"Sent notification with {len(new_listings)} new listings")
 
 
-def run_scraping_job():
-    """Main scraping job - runs at scheduled times."""
-
+def run_scanning_job():
+    """Scan all configured pre-filtered URLs and notify via Telegram."""
     try:
         logger.info("=" * 60)
-        logger.info(f"Starting scheduled scrape at {datetime.now()}")
+        logger.info(f"Starting daily scan at {datetime.now()}")
         logger.info("=" * 60)
 
-        # Load configuration
         config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.yaml')
         config_manager = ConfigManager(config_path)
         config = config_manager.load_config()
 
-        # Initialize database
         db_path = config.get('database', {}).get('path', './data/listings.db')
         if not os.path.isabs(db_path):
             db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), db_path)
+        os.makedirs(os.path.dirname(db_path), exist_ok=True)
 
         db = Database(db_path)
         db.init_db()
 
-        # Initialize Telegram notifier
         telegram_config = config.get('telegram', {})
         notifier = TelegramNotifier(
             telegram_config['bot_token'],
             telegram_config['chat_id']
         )
 
-        # Get search parameters
-        search_params = config.get('search_parameters', {})
-        sources_config = config.get('sources', {})
+        scan_urls = config.get('scan_urls', [])
+        enabled_urls = [u for u in scan_urls if u.get('enabled', True)]
 
-        # Collect all new listings
+        if not enabled_urls:
+            logger.warning("No enabled scan_urls in config.yaml — nothing to scan")
+            return
+
         new_listings = []
         total_scraped = 0
 
-        # Scrape Yad2
-        if sources_config.get('yad2', {}).get('enabled', True):
-            logger.info("Starting Yad2 scraper...")
+        yad2_urls = [u for u in enabled_urls if u.get('source') == 'yad2']
+        facebook_urls = [u for u in enabled_urls if u.get('source') == 'facebook']
+
+        # Scan Yad2 URLs (single browser instance for all URLs)
+        if yad2_urls:
             try:
                 yad2_scraper = Yad2Scraper(config)
-                yad2_listings = yad2_scraper.scrape()
-                total_scraped += len(yad2_listings)
-
-                for listing in yad2_listings:
-                    # Filter listing
-                    if not filter_listing(listing, search_params):
-                        continue
-
-                    # Check if already exists
-                    if db.listing_exists(listing['listing_id'], listing['source']):
-                        continue
-
-                    # Add to new listings and save to database
-                    new_listings.append(listing)
-                    db.add_listing(listing)
-
+                for url_config in yad2_urls:
+                    name = url_config.get('name', url_config['url'])
+                    logger.info(f"Scanning: {name}")
+                    listings = yad2_scraper.scrape(url=url_config['url'])
+                    total_scraped += len(listings)
+                    for listing in listings:
+                        if not db.listing_exists(listing['listing_id'], listing['source']):
+                            new_listings.append(listing)
+                            db.add_listing(listing)
                 yad2_scraper.close_browser()
-                logger.info(f"Yad2: Found {len(new_listings)} new listings")
-
+                yad2_new = sum(1 for l in new_listings if l.get('source', '').startswith('yad2'))
+                logger.info(f"Yad2: {yad2_new} new listings")
             except Exception as e:
-                logger.error(f"Error in Yad2 scraper: {e}")
+                logger.error(f"Error scanning Yad2 URLs: {e}", exc_info=True)
 
-        # Scrape Facebook
-        if sources_config.get('facebook', {}).get('enabled', True):
-            logger.info("Starting Facebook scraper...")
+        # Scan Facebook group URLs (single browser instance for all groups)
+        if facebook_urls:
             try:
                 fb_scraper = FacebookScraper(config)
-                fb_listings = fb_scraper.scrape()
-                total_scraped += len(fb_listings)
-
-                fb_new_count = len(new_listings)
-
-                for listing in fb_listings:
-                    # Filter listing
-                    if not filter_listing(listing, search_params):
-                        continue
-
-                    # Check if already exists
-                    if db.listing_exists(listing['listing_id'], listing['source']):
-                        continue
-
-                    # Add to new listings and save to database
-                    new_listings.append(listing)
-                    db.add_listing(listing)
-
+                for url_config in facebook_urls:
+                    name = url_config.get('name', url_config['url'])
+                    url = url_config['url']
+                    logger.info(f"Scanning Facebook: {name}")
+                    listings = fb_scraper.scrape_group(url, name)
+                    total_scraped += len(listings)
+                    for listing in listings:
+                        if not db.listing_exists(listing['listing_id'], listing['source']):
+                            new_listings.append(listing)
+                            db.add_listing(listing)
                 fb_scraper.close_browser()
-                logger.info(f"Facebook: Found {len(new_listings) - fb_new_count} new listings")
-
+                fb_new = sum(1 for l in new_listings if l.get('source', '').startswith('facebook'))
+                logger.info(f"Facebook: {fb_new} new listings")
             except Exception as e:
-                logger.error(f"Error in Facebook scraper: {e}")
+                logger.error(f"Error scanning Facebook URLs: {e}", exc_info=True)
 
-        # Send aggregated notification
-        send_aggregated_notification(notifier, new_listings)
+        send_scan_notification(notifier, new_listings, total_scraped)
 
-        # Summary
         logger.info("=" * 60)
-        logger.info(f"Scraping complete!")
-        logger.info(f"Total listings scraped: {total_scraped}")
-        logger.info(f"New listings found: {len(new_listings)}")
-        logger.info(f"Total in database: {db.get_listing_count()}")
+        logger.info(f"Scan complete — scraped: {total_scraped}, new: {len(new_listings)}, "
+                    f"total in DB: {db.get_listing_count()}")
         logger.info("=" * 60)
 
     except Exception as e:
-        logger.error(f"Fatal error in scraping job: {e}", exc_info=True)
+        logger.error(f"Fatal error in scanning job: {e}", exc_info=True)
 
 
 def main():
-    """Main scheduler entry point."""
-
-    # Setup logging
+    """Start the scheduler."""
     setup_logging()
 
-    # Define Israel timezone
     israel_tz = pytz.timezone('Asia/Jerusalem')
 
     logger.info("=" * 60)
-    logger.info("Rental Agent Scheduler Starting")
-    logger.info("=" * 60)
-    logger.info(f"Timezone: {israel_tz}")
-    logger.info("Schedule: 10:00 AM and 6:00 PM daily")
+    logger.info("Rental URL Scanner Starting")
+    logger.info("Schedule: 14:00 daily (Jerusalem time)")
     logger.info("=" * 60)
 
-    # Create scheduler
     scheduler = BlockingScheduler(timezone=israel_tz)
 
-    # Add jobs for 10:00 AM and 6:00 PM
     scheduler.add_job(
-        run_scraping_job,
-        CronTrigger(hour=10, minute=0, timezone=israel_tz),
-        id='morning_scrape',
-        name='Morning Scrape (10:00 AM)',
+        run_scanning_job,
+        CronTrigger(hour=14, minute=0, timezone=israel_tz),
+        id='daily_scan',
+        name='Daily Scan (14:00 Jerusalem)',
         replace_existing=True
     )
 
-    scheduler.add_job(
-        run_scraping_job,
-        CronTrigger(hour=18, minute=0, timezone=israel_tz),
-        id='evening_scrape',
-        name='Evening Scrape (6:00 PM)',
-        replace_existing=True
-    )
-
-    # Log next run times
     jobs = scheduler.get_jobs()
     logger.info("\nScheduled jobs:")
     for job in jobs:
-        next_run = job.next_run_time
-        logger.info(f"  - {job.name}: Next run at {next_run}")
+        logger.info(f"  - {job.name}: Next run at {job.next_run_time}")
 
-    logger.info("\n" + "=" * 60)
-    logger.info("Scheduler is running. Press Ctrl+C to stop.")
+    logger.info("\nScheduler is running. Press Ctrl+C to stop.")
     logger.info("=" * 60)
 
     try:
-        # Start scheduler (blocks)
         scheduler.start()
     except KeyboardInterrupt:
         logger.info("Scheduler stopped by user")
