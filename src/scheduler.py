@@ -67,15 +67,22 @@ def filter_listing(listing: dict, search_params: dict) -> bool:
 
 
 def send_aggregated_notification(notifier: TelegramNotifier, new_listings: list):
-    """Send a single notification with all new listings."""
+    """Send a single notification with all new listings, or a summary if none."""
+
+    timestamp = datetime.now().strftime('%d/%m/%Y %H:%M')
 
     if not new_listings:
-        logger.info("No new listings to notify")
+        message = f"🔍 *Daily Rental Scan Complete*\n"
+        message += f"⏰ {timestamp}\n"
+        message += "━━━━━━━━━━━━━━━━━━━━━\n"
+        message += "✅ No new listings found since last scan."
+        notifier.send_message(message)
+        logger.info("Sent no-new-listings notification")
         return
 
     # Build summary message
     message = f"🏠 *New Apartments Found: {len(new_listings)}*\n"
-    message += f"⏰ {datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
+    message += f"⏰ {timestamp}\n"
     message += "━━━━━━━━━━━━━━━━━━━━━\n\n"
 
     for i, listing in enumerate(new_listings[:10], 1):  # Limit to 10 per message
@@ -223,26 +230,18 @@ def main():
     logger.info("Rental Agent Scheduler Starting")
     logger.info("=" * 60)
     logger.info(f"Timezone: {israel_tz}")
-    logger.info("Schedule: 10:00 AM and 6:00 PM daily")
+    logger.info("Schedule: 14:00 daily")
     logger.info("=" * 60)
 
     # Create scheduler
     scheduler = BlockingScheduler(timezone=israel_tz)
 
-    # Add jobs for 10:00 AM and 6:00 PM
+    # Add single daily job at 14:00 Jerusalem time
     scheduler.add_job(
         run_scraping_job,
-        CronTrigger(hour=10, minute=0, timezone=israel_tz),
-        id='morning_scrape',
-        name='Morning Scrape (10:00 AM)',
-        replace_existing=True
-    )
-
-    scheduler.add_job(
-        run_scraping_job,
-        CronTrigger(hour=18, minute=0, timezone=israel_tz),
-        id='evening_scrape',
-        name='Evening Scrape (6:00 PM)',
+        CronTrigger(hour=14, minute=0, timezone=israel_tz),
+        id='daily_scrape',
+        name='Daily Scrape (14:00)',
         replace_existing=True
     )
 
