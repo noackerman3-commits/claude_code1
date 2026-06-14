@@ -1,0 +1,62 @@
+name: Daily Rental Scan
+
+on:
+  schedule:
+    # 11:00 UTC = 14:00 Jerusalem (UTC+3 summer / IDT)
+    # Winter (UTC+2 / IST): runs at 13:00 local — acceptable drift
+    - cron: '0 11 * * *'
+  workflow_dispatch:  # allow manual trigger from GitHub UI
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('requirements.txt') }}
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright & Chromium
+        run: |
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Write config from secret
+        run: echo "${{ secrets.CONFIG_YAML }}" > config.yaml
+
+      - name: Create data directory
+        run: mkdir -p data browser_data
+
+      - name: Restore database from previous run
+        uses: dawidd6/action-download-artifact@v6
+        with:
+          name: rental-database
+          path: data/
+          if_no_artifact_found: ignore
+          workflow_conclusion: success
+
+      - name: Run rental scan
+        env:
+          HEADLESS: 'true'
+        run: python run_scrape_now.py
+
+      - name: Save database for next run
+        uses: actions/upload-artifact@v4
+        with:
+          name: rental-database
+          path: data/listings.db
+          retention-days: 90
+          overwrite: true

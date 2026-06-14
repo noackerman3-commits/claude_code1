@@ -2,6 +2,7 @@
 Base scraper class with shared functionality.
 """
 import logging
+import os
 import time
 import random
 from typing import Optional
@@ -27,7 +28,8 @@ class BaseScraper:
             scraping_config = self.config.get('scraping', {})
 
             persistent_path = browser_config.get('persistent_context_path', './browser_data')
-            headless = browser_config.get('headless', False)
+            # HEADLESS env var overrides config (used in CI/GitHub Actions)
+            headless = os.environ.get('HEADLESS', '').lower() == 'true' or browser_config.get('headless', False)
             user_agent = scraping_config.get('user_agent',
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
 

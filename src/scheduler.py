@@ -223,32 +223,24 @@ def main():
     logger.info("Rental Agent Scheduler Starting")
     logger.info("=" * 60)
     logger.info(f"Timezone: {israel_tz}")
-    logger.info("Schedule: 10:00 AM and 6:00 PM daily")
+    logger.info("Schedule: 14:00 daily (Jerusalem time)")
     logger.info("=" * 60)
 
     # Create scheduler
     scheduler = BlockingScheduler(timezone=israel_tz)
 
-    # Add jobs for 10:00 AM and 6:00 PM
+    # Add daily job at 14:00 Jerusalem time
     scheduler.add_job(
         run_scraping_job,
-        CronTrigger(hour=10, minute=0, timezone=israel_tz),
-        id='morning_scrape',
-        name='Morning Scrape (10:00 AM)',
-        replace_existing=True
-    )
-
-    scheduler.add_job(
-        run_scraping_job,
-        CronTrigger(hour=18, minute=0, timezone=israel_tz),
-        id='evening_scrape',
-        name='Evening Scrape (6:00 PM)',
+        CronTrigger(hour=14, minute=0, timezone=israel_tz),
+        id='afternoon_scrape',
+        name='Daily Scan (14:00)',
         replace_existing=True
     )
 
     # Log next run times
     jobs = scheduler.get_jobs()
-    logger.info("\nScheduled jobs:")
+    logger.info("\nScheduled job:")
     for job in jobs:
         next_run = job.next_run_time
         logger.info(f"  - {job.name}: Next run at {next_run}")
