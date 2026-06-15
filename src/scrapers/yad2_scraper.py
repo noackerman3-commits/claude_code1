@@ -17,29 +17,8 @@ class Yad2Scraper(BaseScraper):
             'https://www.yad2.co.il/realestate/rent')
 
     def build_search_url(self) -> str:
-        """Build search URL from config parameters."""
-        search_params = self.config.get('search_parameters', {})
-        price_range = search_params.get('price_range', {})
-
-        # Yad2 uses specific query parameters
-        params = {}
-
-        if price_range.get('min'):
-            params['priceOnly'] = '1'
-            params['price'] = f"{price_range['min']}-{price_range.get('max', 99999)}"
-
-        if search_params.get('min_rooms'):
-            params['rooms'] = f"{search_params['min_rooms']}-99"
-
-        # Add locations if specified
-        locations = search_params.get('locations', [])
-        if locations:
-            # For simplicity, we'll just use the base URL and filter by location text
-            # Full implementation would map locations to Yad2's city codes
-            pass
-
-        if params:
-            return f"{self.base_url}?{urlencode(params)}"
+        """Return the pre-configured search URL from config."""
+        # Base URL already contains all query params (price, rooms, neighborhood)
         return self.base_url
 
     def scrape(self) -> List[Dict]:

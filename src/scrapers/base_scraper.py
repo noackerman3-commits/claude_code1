@@ -4,10 +4,25 @@ Base scraper class with shared functionality.
 import logging
 import time
 import random
+import os
+import glob as _glob
 from typing import Optional
 from playwright.sync_api import sync_playwright, Browser, BrowserContext, Page
 
 logger = logging.getLogger(__name__)
+
+
+def _find_headless_shell() -> Optional[str]:
+    """Find a Playwright-compatible headless shell on the system."""
+    patterns = [
+        '/opt/pw-browsers/chromium_headless_shell-*/chrome-linux/headless_shell',
+        os.path.expanduser('~/.cache/ms-playwright/chromium_headless_shell-*/chrome-linux/headless_shell'),
+    ]
+    for pattern in patterns:
+        matches = _glob.glob(pattern)
+        if matches:
+            return matches[0]
+    return None
 
 
 class BaseScraper:
@@ -31,14 +46,24 @@ class BaseScraper:
             user_agent = scraping_config.get('user_agent',
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
 
-            # Launch browser with persistent context
-            self.context = self.playwright.chromium.launch_persistent_context(
-                persistent_path,
+            # Find executable path if default browsers not installed
+            launch_kwargs = dict(
                 headless=headless,
                 user_agent=user_agent,
                 viewport={'width': 1920, 'height': 1080},
                 locale='he-IL',
-                timezone_id='Asia/Jerusalem'
+                timezone_id='Asia/Jerusalem',
+                ignore_https_errors=True
+            )
+            exe = _find_headless_shell()
+            if exe:
+                logger.info(f"Using headless shell at: {exe}")
+                launch_kwargs['executable_path'] = exe
+
+            # Launch browser with persistent context
+            self.context = self.playwright.chromium.launch_persistent_context(
+                persistent_path,
+                **launch_kwargs
             )
 
             self.page = self.context.new_page()
