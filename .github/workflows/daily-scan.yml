@@ -1,0 +1,75 @@
+name: Daily Rental Scan
+
+on:
+  schedule:
+    # Covers 14:00 Jerusalem regardless of DST:
+    #   11:00 UTC = 14:00 IDT (UTC+3, summer ~Apr–Oct)
+    #   12:00 UTC = 14:00 IST (UTC+2, winter ~Oct–Apr)
+    # A Jerusalem-time guard below ensures only the correct trigger runs the scan.
+    - cron: '0 11 * * *'
+    - cron: '0 12 * * *'
+  workflow_dispatch:
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Check Jerusalem time
+        id: time_check
+        run: |
+          JERUSALEM_HOUR=$(TZ='Asia/Jerusalem' date +%H)
+          echo "Jerusalem hour: $JERUSALEM_HOUR"
+          if [ "$JERUSALEM_HOUR" -eq 14 ]; then
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+            echo "Skipping: Jerusalem time is ${JERUSALEM_HOUR}:xx, not 14:00"
+          fi
+
+      - name: Checkout repository
+        if: steps.time_check.outputs.should_run == 'true' || github.event_name == 'workflow_dispatch'
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        if: steps.time_check.outputs.should_run == 'true' || github.event_name == 'workflow_dispatch'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install Python dependencies
+        if: steps.time_check.outputs.should_run == 'true' || github.event_name == 'workflow_dispatch'
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright Chromium
+        if: steps.time_check.outputs.should_run == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Restore listings database
+        if: steps.time_check.outputs.should_run == 'true' || github.event_name == 'workflow_dispatch'
+        uses: actions/cache@v4
+        with:
+          path: data/listings.db
+          key: rental-db-${{ github.run_id }}
+          restore-keys: |
+            rental-db-
+
+      - name: Create required directories
+        if: steps.time_check.outputs.should_run == 'true' || github.event_name == 'workflow_dispatch'
+        run: mkdir -p data logs
+
+      - name: Run rental scan
+        if: steps.time_check.outputs.should_run == 'true' || github.event_name == 'workflow_dispatch'
+        run: python run_scrape_now.py
+
+      - name: Upload logs
+        if: (steps.time_check.outputs.should_run == 'true' || github.event_name == 'workflow_dispatch') && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-logs-${{ github.run_number }}
+          path: logs/
+          retention-days: 7
