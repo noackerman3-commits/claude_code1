@@ -20,8 +20,9 @@ browser_data/
 logs/
 *.log
 
-# Data
+# Data (allow seen_ids.json for state persistence across scheduled runs)
 data/
+!data/seen_ids.json
 
 # IDE
 .vscode/

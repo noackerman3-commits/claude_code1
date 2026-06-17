@@ -38,7 +38,8 @@ class BaseScraper:
                 user_agent=user_agent,
                 viewport={'width': 1920, 'height': 1080},
                 locale='he-IL',
-                timezone_id='Asia/Jerusalem'
+                timezone_id='Asia/Jerusalem',
+                args=['--ignore-certificate-errors', '--no-sandbox', '--disable-dev-shm-usage'],
             )
 
             self.page = self.context.new_page()
