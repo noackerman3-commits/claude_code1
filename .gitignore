@@ -20,8 +20,9 @@ browser_data/
 logs/
 *.log
 
-# Data
-data/
+# Data (allow seen_listings.json for cross-session persistence)
+data/*
+!data/seen_listings.json
 
 # IDE
 .vscode/
