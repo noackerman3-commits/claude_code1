@@ -1,5 +1,5 @@
 browser:
-  headless: false
+  headless: true
   persistent_context_path: ./browser_data
 database:
   path: ./data/listings.db
