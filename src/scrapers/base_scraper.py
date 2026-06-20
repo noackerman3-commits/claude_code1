@@ -1,7 +1,9 @@
 """
 Base scraper class with shared functionality.
 """
+import glob
 import logging
+import os
 import time
 import random
 from typing import Optional
@@ -18,6 +20,20 @@ class BaseScraper:
         self.page: Optional[Page] = None
         self.playwright = None
 
+    def _find_chromium_executable(self) -> Optional[str]:
+        """Locate a usable Chromium binary from known Playwright cache paths."""
+        search_dirs = [
+            '/opt/pw-browsers',
+            os.path.expanduser('~/.cache/ms-playwright'),
+        ]
+        for base in search_dirs:
+            # Prefer regular chromium over headless-shell for broader compatibility
+            for pattern in ['chromium-*/chrome-linux/chrome', 'chromium_headless_shell-*/chrome-linux/headless_shell']:
+                matches = sorted(glob.glob(os.path.join(base, pattern)))
+                if matches:
+                    return matches[-1]  # newest revision
+        return None
+
     def initialize_browser(self):
         """Setup Playwright with persistent context."""
         try:
@@ -31,14 +47,26 @@ class BaseScraper:
             user_agent = scraping_config.get('user_agent',
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
 
-            # Launch browser with persistent context
-            self.context = self.playwright.chromium.launch_persistent_context(
-                persistent_path,
+            # Auto-detect executable if the default Playwright binary is missing
+            executable_path = browser_config.get('executable_path') or self._find_chromium_executable()
+            if executable_path:
+                logger.info(f"Using Chromium binary: {executable_path}")
+
+            launch_kwargs = dict(
                 headless=headless,
                 user_agent=user_agent,
                 viewport={'width': 1920, 'height': 1080},
                 locale='he-IL',
-                timezone_id='Asia/Jerusalem'
+                timezone_id='Asia/Jerusalem',
+                ignore_https_errors=True,
+            )
+            if executable_path:
+                launch_kwargs['executable_path'] = executable_path
+
+            # Launch browser with persistent context
+            self.context = self.playwright.chromium.launch_persistent_context(
+                persistent_path,
+                **launch_kwargs
             )
 
             self.page = self.context.new_page()

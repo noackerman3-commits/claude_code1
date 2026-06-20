@@ -39,7 +39,8 @@ class Yad2Scraper(BaseScraper):
             pass
 
         if params:
-            return f"{self.base_url}?{urlencode(params)}"
+            separator = '&' if '?' in self.base_url else '?'
+            return f"{self.base_url}{separator}{urlencode(params)}"
         return self.base_url
 
     def scrape(self) -> List[Dict]:
