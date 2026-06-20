@@ -43,7 +43,11 @@ class BaseScraper:
             scraping_config = self.config.get('scraping', {})
 
             persistent_path = browser_config.get('persistent_context_path', './browser_data')
+            # Force headless when no display is available (cloud/CI environments)
             headless = browser_config.get('headless', False)
+            if not headless and not os.environ.get('DISPLAY') and os.name != 'nt':
+                headless = True
+                logger.info("No DISPLAY detected — forcing headless mode")
             user_agent = scraping_config.get('user_agent',
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
 
