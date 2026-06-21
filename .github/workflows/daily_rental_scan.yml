@@ -1,0 +1,68 @@
+name: Daily Rental Scan
+
+on:
+  # 14:00 Jerusalem time = 11:00 UTC (summer/EEST, UTC+3)
+  schedule:
+    - cron: '0 11 * * *'
+  workflow_dispatch:  # allow manual trigger
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+          python -m playwright install chromium
+          python -m playwright install-deps chromium
+
+      - name: Create data directories
+        run: mkdir -p data logs browser_data
+
+      - name: Initialize database
+        run: python quick_start.py
+
+      - name: Write config from secrets
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python - <<'EOF'
+          import yaml, os
+
+          with open('config.yaml', 'r') as f:
+              config = yaml.safe_load(f)
+
+          bot_token = os.environ.get('TELEGRAM_BOT_TOKEN')
+          chat_id = os.environ.get('TELEGRAM_CHAT_ID')
+
+          if bot_token:
+              config['telegram']['bot_token'] = bot_token
+          if chat_id:
+              config['telegram']['chat_id'] = chat_id
+
+          with open('config.yaml', 'w') as f:
+              yaml.dump(config, f, allow_unicode=True)
+
+          print("Config updated with secrets")
+          EOF
+
+      - name: Run rental scan
+        run: python run_scrape_now.py
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-logs-${{ github.run_id }}
+          path: logs/
+          retention-days: 7
