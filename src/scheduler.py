@@ -66,11 +66,19 @@ def filter_listing(listing: dict, search_params: dict) -> bool:
     return True
 
 
-def send_aggregated_notification(notifier: TelegramNotifier, new_listings: list):
+def send_aggregated_notification(notifier: TelegramNotifier, new_listings: list, total_scraped: int = 0):
     """Send a single notification with all new listings."""
 
     if not new_listings:
         logger.info("No new listings to notify")
+        message = (
+            f"🔍 *Daily Rental Scan Complete*\n"
+            f"⏰ {datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
+            f"━━━━━━━━━━━━━━━━━━━━━\n"
+            f"✅ Scanned {total_scraped} listings\n"
+            f"ℹ️ No new listings found — all seen before."
+        )
+        notifier.send_message(message)
         return
 
     # Build summary message
@@ -196,7 +204,7 @@ def run_scraping_job():
                 logger.error(f"Error in Facebook scraper: {e}")
 
         # Send aggregated notification
-        send_aggregated_notification(notifier, new_listings)
+        send_aggregated_notification(notifier, new_listings, total_scraped)
 
         # Summary
         logger.info("=" * 60)
@@ -208,6 +216,21 @@ def run_scraping_job():
 
     except Exception as e:
         logger.error(f"Fatal error in scraping job: {e}", exc_info=True)
+        # Try to notify about the failure via Telegram
+        try:
+            config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'config.yaml')
+            config_manager = ConfigManager(config_path)
+            config = config_manager.load_config()
+            telegram_config = config.get('telegram', {})
+            notifier = TelegramNotifier(telegram_config['bot_token'], telegram_config['chat_id'])
+            notifier.send_message(
+                f"⚠️ *Rental Scan Error*\n"
+                f"⏰ {datetime.now().strftime('%d/%m/%Y %H:%M')}\n"
+                f"❌ `{type(e).__name__}: {str(e)[:300]}`\n"
+                f"_Check logs for details._"
+            )
+        except Exception:
+            pass
 
 
 def main():
@@ -223,32 +246,24 @@ def main():
     logger.info("Rental Agent Scheduler Starting")
     logger.info("=" * 60)
     logger.info(f"Timezone: {israel_tz}")
-    logger.info("Schedule: 10:00 AM and 6:00 PM daily")
+    logger.info("Schedule: 14:00 daily (Jerusalem time)")
     logger.info("=" * 60)
 
     # Create scheduler
     scheduler = BlockingScheduler(timezone=israel_tz)
 
-    # Add jobs for 10:00 AM and 6:00 PM
+    # Add job for 14:00 (2:00 PM Israel time)
     scheduler.add_job(
         run_scraping_job,
-        CronTrigger(hour=10, minute=0, timezone=israel_tz),
-        id='morning_scrape',
-        name='Morning Scrape (10:00 AM)',
+        CronTrigger(hour=14, minute=0, timezone=israel_tz),
+        id='afternoon_scrape',
+        name='Afternoon Scrape (14:00)',
         replace_existing=True
     )
 
-    scheduler.add_job(
-        run_scraping_job,
-        CronTrigger(hour=18, minute=0, timezone=israel_tz),
-        id='evening_scrape',
-        name='Evening Scrape (6:00 PM)',
-        replace_existing=True
-    )
-
-    # Log next run times
+    # Log next run time
     jobs = scheduler.get_jobs()
-    logger.info("\nScheduled jobs:")
+    logger.info("\nScheduled job:")
     for job in jobs:
         next_run = job.next_run_time
         logger.info(f"  - {job.name}: Next run at {next_run}")
