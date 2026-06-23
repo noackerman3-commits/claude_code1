@@ -1,0 +1,108 @@
+name: Daily Rental Scan
+
+on:
+  schedule:
+    # 14:00 Jerusalem summer time (IDT = UTC+3) → 11:00 UTC
+    # During winter (IST = UTC+2) this triggers at 13:00 local; acceptable drift.
+    - cron: '0 11 * * *'
+  workflow_dispatch:  # allow manual runs from the Actions tab
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright Chromium
+        run: |
+          playwright install chromium
+          playwright install-deps chromium
+
+      - name: Create required directories
+        run: mkdir -p data logs browser_data
+
+      - name: Generate config.yaml from secrets
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python - << 'PYEOF'
+          import yaml, os
+          config = {
+              'telegram': {
+                  'bot_token': os.environ['TELEGRAM_BOT_TOKEN'],
+                  'chat_id': os.environ['TELEGRAM_CHAT_ID'],
+              },
+              'browser': {
+                  'headless': True,
+                  'persistent_context_path': './browser_data',
+              },
+              'database': {'path': './data/listings.db'},
+              'scraping': {
+                  'delay_min': 2,
+                  'delay_max': 5,
+                  'scroll_count': 10,
+                  'user_agent': (
+                      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                      'AppleWebKit/537.36 (KHTML, like Gecko) '
+                      'Chrome/120.0.0.0 Safari/537.36'
+                  ),
+              },
+              'search_parameters': {
+                  'price_range': {'min': 6000, 'max': 11000},
+                  'min_rooms': 3.0,
+                  'locations': [
+                      'Tel Aviv',
+                      'Ramat Gan',
+                      'Kfar Saba, Herzelyia, Raanana, Shoham, Beit Aryieh, North District',
+                      'רעננה, כפר סבא, הוד השרון, בית אריה, עמק יזרעאל, השרון, תל מונד, הרצליה, בבלי, שוהם',
+                  ],
+                  'must_have_keywords': ['מעלית', 'מרפסת'],
+                  'exclude_keywords': ['דירת חלוקה', 'shared'],
+              },
+              'sources': {
+                  'yad2': {
+                      'enabled': True,
+                      'base_url': (
+                          'https://www.yad2.co.il/realestate/rent/center-and-sharon'
+                          '?minPrice=6000&maxPrice=11000&minRooms=3&maxRooms=4'
+                          '&multiNeighborhood=344%2C808%2C1501'
+                      ),
+                  },
+                  'facebook': {
+                      'enabled': False,
+                      'groups': [
+                          {'name': 'Group1', 'url': 'https://www.facebook.com/groups/1663070923962851/'},
+                          {'name': 'Group2', 'url': 'https://www.facebook.com/groups/1617402861868870'},
+                          {'name': 'Group3', 'url': 'https://www.facebook.com/groups/3697622177026947'},
+                      ],
+                  },
+              },
+          }
+          with open('config.yaml', 'w', encoding='utf-8') as f:
+              yaml.dump(config, f, allow_unicode=True, default_flow_style=False)
+          print('config.yaml generated')
+          PYEOF
+
+      - name: Run rental scan
+        run: python src/main.py
+
+      - name: Upload scan logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: scan-logs-${{ github.run_number }}
+          path: logs/
+          retention-days: 7
