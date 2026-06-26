@@ -24,6 +24,12 @@ class ConfigManager:
             with open(self.config_path, 'r', encoding='utf-8') as f:
                 self.config = yaml.safe_load(f)
 
+            # Allow environment variables to override Telegram credentials
+            if os.environ.get('TELEGRAM_BOT_TOKEN'):
+                self.config.setdefault('telegram', {})['bot_token'] = os.environ['TELEGRAM_BOT_TOKEN']
+            if os.environ.get('TELEGRAM_CHAT_ID'):
+                self.config.setdefault('telegram', {})['chat_id'] = os.environ['TELEGRAM_CHAT_ID']
+
             logger.info("Configuration loaded successfully")
             return self.config
         except Exception as e:

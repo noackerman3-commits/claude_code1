@@ -1,0 +1,37 @@
+name: Daily Rental Scan
+
+on:
+  schedule:
+    # 11:00 UTC = 14:00 Jerusalem time (IDT, UTC+3)
+    - cron: '0 11 * * *'
+  workflow_dispatch:  # allow manual trigger from GitHub UI
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        run: playwright install chromium --with-deps
+
+      - name: Create data directory
+        run: mkdir -p data logs
+
+      - name: Run rental scan
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python run_scrape_now.py
