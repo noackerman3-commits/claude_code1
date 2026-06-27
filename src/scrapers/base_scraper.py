@@ -2,6 +2,7 @@
 Base scraper class with shared functionality.
 """
 import logging
+import os
 import time
 import random
 from typing import Optional
@@ -27,18 +28,35 @@ class BaseScraper:
             scraping_config = self.config.get('scraping', {})
 
             persistent_path = browser_config.get('persistent_context_path', './browser_data')
-            headless = browser_config.get('headless', False)
+            # HEADLESS env var overrides config (use for remote/CI environments)
+            env_headless = os.environ.get('HEADLESS', '').lower()
+            if env_headless in ('1', 'true', 'yes'):
+                headless = True
+            elif env_headless in ('0', 'false', 'no'):
+                headless = False
+            else:
+                headless = browser_config.get('headless', True)
             user_agent = scraping_config.get('user_agent',
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
 
-            # Launch browser with persistent context
-            self.context = self.playwright.chromium.launch_persistent_context(
-                persistent_path,
+            # Use pre-installed Chromium if available (remote/CI environments)
+            preinstalled = '/opt/pw-browsers/chromium'
+            executable_path = preinstalled if os.path.exists(preinstalled) else None
+
+            launch_kwargs = dict(
                 headless=headless,
                 user_agent=user_agent,
                 viewport={'width': 1920, 'height': 1080},
                 locale='he-IL',
-                timezone_id='Asia/Jerusalem'
+                timezone_id='Asia/Jerusalem',
+            )
+            if executable_path:
+                launch_kwargs['executable_path'] = executable_path
+
+            # Launch browser with persistent context
+            self.context = self.playwright.chromium.launch_persistent_context(
+                persistent_path,
+                **launch_kwargs
             )
 
             self.page = self.context.new_page()
