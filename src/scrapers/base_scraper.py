@@ -35,6 +35,7 @@ class BaseScraper:
             self.context = self.playwright.chromium.launch_persistent_context(
                 persistent_path,
                 headless=headless,
+                executable_path='/opt/pw-browsers/chromium',
                 user_agent=user_agent,
                 viewport={'width': 1920, 'height': 1080},
                 locale='he-IL',
