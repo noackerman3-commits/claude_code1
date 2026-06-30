@@ -8,20 +8,21 @@ env/
 venv/
 ENV/
 
-# Sensitive data
+# Sensitive data — never commit real credentials
 config.yaml
-*.db
-*.sqlite
 
-# Browser data
+# Browser data (persistent login sessions, not for CI)
 browser_data/
 
 # Logs
 logs/
 *.log
 
-# Data
-data/
+# Data directory — listings.db IS tracked for CI state persistence
+# (allows deduplication across scheduled runs without external storage)
+data/*
+!data/.gitkeep
+!data/listings.db
 
 # IDE
 .vscode/

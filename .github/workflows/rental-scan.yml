@@ -1,0 +1,156 @@
+name: Daily Rental Scan
+
+on:
+  schedule:
+    # Two triggers: one fires at 14:00 Jerusalem IDT (UTC+3, Apr–Oct)
+    # the other fires at 14:00 Jerusalem IST (UTC+2, Nov–Mar).
+    # The time-check step ensures only the correct one runs the scraper.
+    - cron: '0 11 * * *'   # 14:00 IDT (UTC+3, summer)
+    - cron: '0 12 * * *'   # 14:00 IST (UTC+2, winter)
+  workflow_dispatch:        # Allow manual trigger for testing
+
+concurrency:
+  group: rental-scan
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check Jerusalem time
+        id: time_check
+        run: |
+          JERUSALEM_HOUR=$(TZ='Asia/Jerusalem' date +%H)
+          echo "Current Jerusalem hour: $JERUSALEM_HOUR"
+          echo "jerusalem_hour=$JERUSALEM_HOUR" >> "$GITHUB_OUTPUT"
+
+          # On manual dispatch, always run
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual dispatch — skipping time check"
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          elif [ "$JERUSALEM_HOUR" = "14" ]; then
+            echo "It is 14:xx in Jerusalem — proceeding"
+            echo "should_run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Not 14:xx in Jerusalem — this trigger is for the other timezone offset, skipping"
+            echo "should_run=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Python
+        if: steps.time_check.outputs.should_run == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install Python dependencies
+        if: steps.time_check.outputs.should_run == 'true'
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright Chromium
+        if: steps.time_check.outputs.should_run == 'true'
+        run: playwright install chromium --with-deps
+
+      - name: Create runtime directories
+        if: steps.time_check.outputs.should_run == 'true'
+        run: mkdir -p data logs browser_data
+
+      - name: Generate config.yaml from secrets
+        if: steps.time_check.outputs.should_run == 'true'
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          python3 - <<'PYEOF'
+          import os, yaml
+
+          config = {
+              'browser': {
+                  'headless': True,
+                  'persistent_context_path': './browser_data'
+              },
+              'database': {
+                  'path': './data/listings.db'
+              },
+              'scraping': {
+                  'delay_max': 5,
+                  'delay_min': 2,
+                  'scroll_count': 10,
+                  'user_agent': (
+                      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) '
+                      'AppleWebKit/537.36 (KHTML, like Gecko) '
+                      'Chrome/120.0.0.0 Safari/537.36'
+                  )
+              },
+              'search_parameters': {
+                  'exclude_keywords': ['דירת חלוקה', 'shared'],
+                  'locations': [
+                      'Tel Aviv',
+                      'Ramat Gan',
+                      'Kfar Saba, Herzelyia, Raanana, Shoham, Beit Aryieh, North District',
+                      'רעננה, כפר סבא, הוד השרון, בית אריה, עמק יזרעאל, השרון, תל מונד, הרצליה, בבלי, שוהם',
+                  ],
+                  'min_rooms': 3.0,
+                  'must_have_keywords': ['מעלית', 'מרפסת'],
+                  'price_range': {'max': 11000, 'min': 6000}
+              },
+              'sources': {
+                  'facebook': {
+                      'enabled': False,
+                      'groups': [
+                          {'name': 'Group1', 'url': 'https://www.facebook.com/groups/1663070923962851/'},
+                          {'name': 'Group2', 'url': 'https://www.facebook.com/groups/1617402861868870'},
+                          {'name': 'Group3', 'url': 'https://www.facebook.com/groups/3697622177026947'},
+                      ]
+                  },
+                  'yad2': {
+                      'base_url': (
+                          'https://www.yad2.co.il/realestate/rent/center-and-sharon'
+                          '?minPrice=6000&maxPrice=11000&minRooms=3&maxRooms=4'
+                          '&multiNeighborhood=344%2C808%2C1501'
+                      ),
+                      'enabled': True
+                  }
+              },
+              'telegram': {
+                  'bot_token': os.environ['TELEGRAM_BOT_TOKEN'],
+                  'chat_id': os.environ['TELEGRAM_CHAT_ID']
+              }
+          }
+
+          with open('config.yaml', 'w', encoding='utf-8') as f:
+              yaml.dump(config, f, allow_unicode=True, default_flow_style=False)
+
+          print("config.yaml generated successfully")
+          PYEOF
+
+      - name: Run rental scanner
+        if: steps.time_check.outputs.should_run == 'true'
+        run: python src/main.py
+
+      - name: Persist listings database to repository
+        if: steps.time_check.outputs.should_run == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Pull latest to avoid diverged-history conflicts
+          git pull --rebase origin "${{ github.ref_name }}" || true
+
+          git add data/listings.db
+          if ! git diff --staged --quiet; then
+            SCAN_DATE=$(TZ='Asia/Jerusalem' date '+%Y-%m-%d %H:%M Jerusalem')
+            git commit -m "chore: update listings database — $SCAN_DATE [skip ci]"
+            git push origin "HEAD:${{ github.ref_name }}"
+          else
+            echo "Database unchanged — nothing to commit"
+          fi
