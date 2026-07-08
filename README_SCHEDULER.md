@@ -2,9 +2,8 @@
 
 ## How It Works
 
-The rental agent runs **automatically** at scheduled times:
-- **10:00 AM** - Morning scrape
-- **6:00 PM** - Evening scrape
+The rental agent runs **automatically** at a scheduled time:
+- **14:00 (2:00 PM)** - Daily scrape
 
 ### What Happens at Each Scheduled Time:
 
@@ -74,7 +73,7 @@ python src/scheduler.py
 
 The scheduler will:
 - ✅ Run continuously in the background
-- ✅ Execute at 10:00 AM and 6:00 PM Israel time
+- ✅ Execute at 14:00 (2:00 PM) Israel time
 - ✅ Send Telegram notifications with results
 - ✅ Log all activity to `logs/` folder
 
@@ -179,8 +178,7 @@ type logs\scraper_20260503.log
 The scheduler uses **Asia/Jerusalem** timezone automatically.
 
 Times are in Israel time:
-- 10:00 AM = 10:00 Israel time
-- 6:00 PM = 18:00 Israel time
+- 14:00 = 2:00 PM Israel time
 
 ## Troubleshooting
 
@@ -235,10 +233,10 @@ taskkill /F /IM python.exe
 
 ## Schedule Customization
 
-To change scraping times, edit `src/scheduler.py`:
+To change the scraping time, edit `src/scheduler.py`:
 
 ```python
-# Change from 10:00 and 18:00 to your preferred times
+# Change from 14:00 to your preferred time
 scheduler.add_job(
     run_scraping_job,
     CronTrigger(hour=9, minute=30, timezone=israel_tz),  # 9:30 AM

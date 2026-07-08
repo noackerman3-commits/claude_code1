@@ -134,9 +134,7 @@ python src/main.py
 
 3. **Triggers Tab:**
    - Click "New..."
-   - Set daily at 09:00
-   - Click "New..." again
-   - Set daily at 17:00
+   - Set daily at 14:00
 
 4. **Actions Tab:**
    - Click "New..."
