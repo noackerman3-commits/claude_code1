@@ -10,7 +10,6 @@ ENV/
 
 # Sensitive data
 config.yaml
-*.db
 *.sqlite
 
 # Browser data
@@ -20,8 +19,9 @@ browser_data/
 logs/
 *.log
 
-# Data
-data/
+# Data (listings.db is tracked to persist dedup state across scheduled runs)
+data/*
+!data/listings.db
 
 # IDE
 .vscode/

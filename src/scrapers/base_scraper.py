@@ -2,6 +2,7 @@
 Base scraper class with shared functionality.
 """
 import logging
+import os
 import time
 import random
 from typing import Optional
@@ -31,14 +32,27 @@ class BaseScraper:
             user_agent = scraping_config.get('user_agent',
                 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
 
-            # Launch browser with persistent context
-            self.context = self.playwright.chromium.launch_persistent_context(
-                persistent_path,
+            launch_kwargs = dict(
                 headless=headless,
                 user_agent=user_agent,
                 viewport={'width': 1920, 'height': 1080},
                 locale='he-IL',
                 timezone_id='Asia/Jerusalem'
+            )
+
+            # Use the pre-cached full Chromium binary if available (e.g. cloud
+            # sandboxes that pin a browser revision independent of the pip package).
+            preinstalled_chromium = os.environ.get(
+                'PLAYWRIGHT_CHROMIUM_EXECUTABLE',
+                '/opt/pw-browsers/chromium'
+            )
+            if os.path.exists(preinstalled_chromium):
+                launch_kwargs['executable_path'] = preinstalled_chromium
+
+            # Launch browser with persistent context
+            self.context = self.playwright.chromium.launch_persistent_context(
+                persistent_path,
+                **launch_kwargs
             )
 
             self.page = self.context.new_page()
